@@ -18,6 +18,20 @@ images and videos by routing them through 12 external vision backends.
 
 ## Quick start
 
+### Drop-in install (tell your AI)
+
+Just send this URL to your AI assistant:
+
+```
+https://github.com/farhanic017/vision-for-opencode
+```
+
+Your AI will clone, install deps, set up API keys, and configure everything
+automatically. The `SKILL.md` file contains step-by-step instructions that
+any AI agent reads and follows.
+
+### Manual install
+
 ```bash
 # 1. Clone
 git clone https://github.com/farhanic017/vision-for-opencode.git
@@ -32,6 +46,16 @@ python setup.py
 # 4. Analyse anything
 python vision_proxy.py screenshot.png
 python vision_proxy.py demo.mp4 "Describe the UI flow"
+```
+
+### Auto-installer
+
+```bash
+# Interactive (asks questions)
+python install.py
+
+# Non-interactive (best for automation)
+python install.py --auto
 ```
 
 ## Vision backends
@@ -311,9 +335,10 @@ User: "What's in this image?"
 ```
 vision-for-opencode/
 ├── README.md                 # This file
-├── SKILL.md                  # opencode skill definition
+├── SKILL.md                  # opencode skill definition (AI reads this to install)
+├── install.py                # Auto-installer (one command setup)
 ├── vision_proxy.py           # Core analysis engine (CLI + Python API)
-├── vision_mcp_server.py      # MCP server wrapper (stdio JSON-RPC)
+├── vision_mcp_server.py      # MCP server (stdio + HTTP modes)
 ├── vision_watchdog.vbs       # Invisible background process manager (WMI)
 ├── vision_watchdog.cs        # C# source for zero-flash compiled EXE
 ├── setup.py                  # First-run API key wizard

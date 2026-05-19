@@ -19,12 +19,74 @@ triggers:
   - analyse video
   - describe picture
   - describe video
+  - install vision
+  - setup vision
 ---
 
 # opencode-vision
 
 Brings image & video analysis to any opencode model — even ones without
 built-in vision (e.g. big-pickle, DeepSeek, local models).
+
+## Instant Install (one command)
+
+When a user drops this repo URL into their AI, do this:
+
+1. **Clone the repo:**
+   ```bash
+   git clone https://github.com/farhanic017/vision-for-opencode.git
+   cd vision-for-opencode
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install pillow
+   ```
+
+3. **Configure API keys:**
+   ```bash
+   python setup.py
+   ```
+
+4. **Add MCP server to config:**
+   - For **opencode** → edit `opencode.jsonc`:
+     ```jsonc
+     "mcp": {
+       "opencode-vision": {
+         "type": "local",
+         "command": ["python", "/full/path/to/vision_mcp_server.py"],
+         "enabled": true
+       }
+     }
+     ```
+   - For **Claude Desktop** → edit `claude_desktop_config.json`:
+     ```json
+     "mcpServers": {
+       "opencode-vision": {
+         "command": "python",
+         "args": ["/full/path/to/vision_mcp_server.py"]
+       }
+     }
+     ```
+   - For **Cursor** → add in MCP server settings:
+     ```
+     Name: opencode-vision
+     Type: command
+     Command: python /full/path/to/vision_mcp_server.py
+     ```
+
+5. **Also add as opencode skill** (optional, for trigger-based activation):
+   ```jsonc
+   "skills": {
+     "paths": ["/full/path/to/vision-for-opencode"]
+   }
+   ```
+
+Or just run the auto-installer:
+```bash
+python install.py
+python install.py --auto   # Non-interactive
+```
 
 ## How it works
 
@@ -58,7 +120,7 @@ Run `setup.py` once to add API keys:
 
 Keys are stored in `config.json` next to the script. No keys are hardcoded.
 
-## Usage from opencode
+## Usage
 
 When the user asks you to look at an image or video, run:
 
@@ -84,7 +146,7 @@ When the user asks you to look at an image or video, run:
 
 The server can also be run as an MCP server (via `vision_mcp_server.py`),
 exposing `analyze_image` and `analyze_video` as native tools. Add it to
-`opencode.jsonc` as an MCP server instead of a skill if you prefer.
+your MCP config instead of running CLI commands.
 
 ## Installation
 
