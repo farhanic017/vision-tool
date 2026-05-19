@@ -34,6 +34,7 @@ import sys
 import os
 import io
 import traceback
+import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vision_proxy as vp
@@ -98,94 +99,145 @@ def send(msg):
 def main():
     buf = ""
 
+def process_message(msg):
+    """Handle a single JSON-RPC message and return a response, or None for notifications."""
+    msg_id = msg.get("id")
+    method = msg.get("method")
+    params = msg.get("params", {})
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {
+                        name: {
+                            "description": info["description"],
+                            "inputSchema": info["inputSchema"],
+                        }
+                        for name, info in TOOLS.items()
+                    }
+                },
+                "serverInfo": {"name": "opencode-vision", "version": "1.0.0"},
+            },
+        }
+
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": list(TOOLS.values())}}
+
+    if method == "tools/call":
+        tool_name = params.get("name", "")
+        tool_args = params.get("arguments", {})
+        try:
+            result = handle_tool_call(tool_name, tool_args)
+            return {"jsonrpc": "2.0", "id": msg_id, "result": result}
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {"code": -32603, "message": str(e), "data": traceback.format_exc()},
+            }
+
+    if method == "notifications/initialized":
+        return None
+
+    if msg_id is None:
+        return None
+
+    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
+
+
+def handle_http_request(environ, start_response):
+    """WSGI handler for HTTP MCP mode."""
+    path = environ.get("PATH_INFO", "").rstrip("/")
+
+    if path == "/mcp" and environ["REQUEST_METHOD"] == "POST":
+        try:
+            length = int(environ.get("CONTENT_LENGTH", 0))
+            body = environ["wsgi.input"].read(length).decode("utf-8")
+            msg = json.loads(body)
+            resp = process_message(msg)
+            if resp is None:
+                start_response("202 Accepted", [("Content-Type", "application/json")])
+                return [b'{"status":"accepted"}']
+            js = json.dumps(resp, ensure_ascii=False)
+            start_response("200 OK", [("Content-Type", "application/json")])
+            return [js.encode("utf-8")]
+        except json.JSONDecodeError:
+            start_response("400 Bad Request", [("Content-Type", "application/json")])
+            return [b'{"error":"Invalid JSON"}']
+        except Exception as e:
+            start_response("500 Internal Server Error", [("Content-Type", "application/json")])
+            return [json.dumps({"error": str(e)}).encode("utf-8")]
+
+    if path == "/health":
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [b'{"status":"ok","version":"1.0.0"}']
+    if path == "/tools":
+        resp = process_message({"id": 1, "method": "tools/list"})
+        js = json.dumps(resp, ensure_ascii=False)
+        start_response("200 OK", [("Content-Type", "application/json")])
+        return [js.encode("utf-8")]
+
+    start_response("404 Not Found", [("Content-Type", "text/plain")])
+    return [b"Not Found"]
+
+
+def run_stdio():
+    """Run MCP server over stdin/stdout (default)."""
+    buf = ""
     while True:
         try:
             chunk = sys.stdin.read(4096)
             if not chunk:
                 break
             buf += chunk
-
             while "\n" in buf:
                 line, buf = buf.split("\n", 1)
                 line = line.strip()
                 if not line:
                     continue
-
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-
-                msg_id = msg.get("id")
-                method = msg.get("method")
-                params = msg.get("params", {})
-
-                # ── initialize ──────────────────────────────────────
-                if method == "initialize":
-                    send({
-                        "jsonrpc": "2.0",
-                        "id": msg_id,
-                        "result": {
-                            "protocolVersion": "2024-11-05",
-                            "capabilities": {
-                                "tools": {
-                                    name: {
-                                        "description": info["description"],
-                                        "inputSchema": info["inputSchema"],
-                                    }
-                                    for name, info in TOOLS.items()
-                                }
-                            },
-                            "serverInfo": {
-                                "name": "opencode-vision",
-                                "version": "1.0.0",
-                            },
-                        },
-                    })
-                    continue
-
-                # ── tools/list ──────────────────────────────────────
-                if method == "tools/list":
-                    send({
-                        "jsonrpc": "2.0",
-                        "id": msg_id,
-                        "result": {"tools": list(TOOLS.values())},
-                    })
-                    continue
-
-                # ── tools/call ──────────────────────────────────────
-                if method == "tools/call":
-                    tool_name = params.get("name", "")
-                    tool_args = params.get("arguments", {})
-                    try:
-                        result = handle_tool_call(tool_name, tool_args)
-                        send({"jsonrpc": "2.0", "id": msg_id, "result": result})
-                    except Exception as e:
-                        send({
-                            "jsonrpc": "2.0",
-                            "id": msg_id,
-                            "error": {"code": -32603, "message": str(e), "data": traceback.format_exc()},
-                        })
-                    continue
-
-                # ── notifications (no id) ───────────────────────────
-                if msg_id is None:
-                    continue
-
-                send({
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "error": {"code": -32601, "message": f"Unknown method: {method}"},
-                })
-
+                resp = process_message(msg)
+                if resp is not None:
+                    send(resp)
         except (EOFError, KeyboardInterrupt):
             break
         except Exception as e:
-            send({
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32603, "message": str(e), "data": traceback.format_exc()},
-            })
+            send({"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)}})
+
+
+def run_http(port=3789):
+    """Run MCP server as HTTP server (for watchdog background mode)."""
+    from wsgiref.simple_server import make_server
+    httpd = make_server("127.0.0.1", port, handle_http_request)
+    httpd.timeout = 0.5
+    while True:
+        try:
+            httpd.handle_request()
+        except KeyboardInterrupt:
+            break
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="opencode-vision MCP server")
+    parser.add_argument("--http", type=int, nargs="?", const=3789, default=0,
+                        help="Run as HTTP server on given port (default: 3789). Omit for stdio mode.")
+    args = parser.parse_args()
+
+    if args.http:
+        port = args.http if args.http is True else 3789
+        sys.stderr.write(f"Starting HTTP MCP server on port {port}...\n")
+        sys.stderr.flush()
+        run_http(port)
+    else:
+        run_stdio()
 
 
 if __name__ == "__main__":

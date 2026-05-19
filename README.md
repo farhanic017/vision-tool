@@ -168,7 +168,68 @@ Works identically with any local model in any MCP client:
 }
 ```
 
-### 5. Python import (programmatic)
+### 5. Invisible background watchdog (Windows)
+
+For a zero-setup experience, the watchdog auto-starts the vision MCP server
+whenever `opencode.exe` runs and kills it when opencode exits — all hidden,
+no windows, no taskbar icons.
+
+**How it works:**
+
+```
+Windows starts
+  │
+  ▼
+vision_watchdog.vbs launches (invisible via wscript.exe)
+  │
+  ▼
+Every 10s polls WMI: "Is opencode.exe running?"
+  │
+  ├── Yes → Launch vision_mcp_server.py as hidden process
+  │         (writes PID to %TEMP%\vision_watchdog.pid)
+  │
+  └── No  → Kill child process, delete PID file
+```
+
+#### Quick start
+
+```cmd
+:: Start the watchdog (double-click or run at login)
+wscript.exe //nologo "C:\path\to\vision_watchdog.vbs"
+```
+
+Add it to your startup folder (`shell:startup`) so it runs at every boot:
+
+```cmd
+:: Copy shortcut to Startup folder
+powershell -Command "$wshell = New-Object -ComObject WScript.Shell; $shortcut = $wshell.CreateShortcut((Join-Path $wshell.SpecialFolders('Startup') 'opencode-vision.lnk')); $shortcut.TargetPath = 'wscript.exe'; $shortcut.Arguments = '//nologo \"C:\path\to\vision_watchdog.vbs\"'; $shortcut.WindowStyle = 7; $shortcut.Save()"
+```
+
+#### Zero-flash option (no wscript icon)
+
+For absolute invisibility (no wscript.exe taskbar icon), compile the C# version:
+
+```cmd
+:: Install .NET Framework or dotnet, then:
+csc.exe /target:winexe /out:vision_watchdog.exe vision_watchdog.cs
+
+:: Run the compiled EXE instead
+vision_watchdog.exe
+```
+
+The compiled EXE has zero presence — no console, no window, no icon.
+
+#### Custom command
+
+By default the watchdog launches `vision_mcp_server.py`. You can point it at
+any process:
+
+```cmd
+wscript.exe //nologo vision_watchdog.vbs "notepad.exe"
+wscript.exe //nologo vision_watchdog.vbs "python my_script.py" "my_pid.pid"
+```
+
+### 6. Python import (programmatic)
 
 ```python
 from vision_proxy import analyze
@@ -185,6 +246,29 @@ print(description)
 description = analyze("diagram.jpg", "Extract all visible text and explain the architecture")
 print(description)
 ```
+
+## Model compatibility
+
+The vision tool works with **any AI model** — it doesn't matter if the model
+has vision or not. The model never processes the image/video directly; the
+vision proxy handles that externally and returns plain text.
+
+| Model / Client | How it connects | Verified |
+|----------------|-----------------|----------|
+| **OpenCode** (`big-pickle`, `DeepSeek`, etc.) | MCP server or skill | ✅ Yes |
+| **Claude Desktop** / **Claude Code** | MCP server | ✅ Yes |
+| **Cursor** | MCP server | ✅ Yes |
+| **Windsurf** | MCP server | ✅ Yes |
+| **Continue.dev** | MCP server | ✅ Yes |
+| **Hermes** (NousResearch) | MCP server or CLI | ✅ Compatible (standard MCP) |
+| **OpenClaw** | MCP server or CLI | ✅ Compatible (standard MCP) |
+| **Ollama** (any local model) | MCP server + `"model": "ollama/..."` | ✅ Yes |
+| **LM Studio** | MCP server | ✅ Yes |
+| **llama.cpp** | MCP server | ✅ Yes |
+| **Any terminal** | CLI (`python vision_proxy.py`) | ✅ Yes |
+
+All MCP-compatible tools use the same protocol — if your client supports
+MCP, it works.
 
 ## How it works
 
@@ -230,6 +314,8 @@ vision-for-opencode/
 ├── SKILL.md                  # opencode skill definition
 ├── vision_proxy.py           # Core analysis engine (CLI + Python API)
 ├── vision_mcp_server.py      # MCP server wrapper (stdio JSON-RPC)
+├── vision_watchdog.vbs       # Invisible background process manager (WMI)
+├── vision_watchdog.cs        # C# source for zero-flash compiled EXE
 ├── setup.py                  # First-run API key wizard
 ├── config.json.example       # Example config (safe to commit)
 ├── config.json               # Your actual keys (gitignored)
