@@ -227,7 +227,7 @@ def choose_option():
     print()
     print(bold("  2)") + "  Add later")
     print(dim("     Skip key setup. vision-tool won't work until you"))
-    print(dim('     add keys. Run later:') + bold(' python setup.py --add-key'))
+    print(dim("     add keys later. You will be shown how."))
     print()
 
     while True:
@@ -241,6 +241,19 @@ def choose_option():
 
 def setup_later():
     """Create blank config with placeholders and warn user."""
+    existing = {}
+    if os.path.isfile(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH) as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    has_keys = any(v for v in (existing.get("GEMINI_API_KEY"), existing.get("OPENROUTER_API_KEY")))
+    if has_keys:
+        print(yellow("  Keys already configured — nothing to skip."))
+        return
+
     config = {
         "GEMINI_API_KEY": "",
         "OPENROUTER_API_KEY": "",

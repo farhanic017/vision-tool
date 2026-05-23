@@ -228,6 +228,9 @@ def step_configure(target_dir, auto=False):
                 skill_instr = os.path.join(target_dir, "SKILL.md")
                 if skill_instr not in config[instr_key]:
                     config[instr_key].append(skill_instr)
+                with open(config_path, "w") as f:
+                    json.dump(config, f, indent=2)
+                print(f"  {green('✔')} Added SKILL.md to instructions")
 
 
 def step_watchdog(target_dir, auto=False):
@@ -271,10 +274,14 @@ def main():
     if args.target:
         target_dir = args.target
     else:
-        default_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision-tool")
-        if not os.path.isdir(default_dir) or not os.path.isfile(os.path.join(default_dir, "vision_proxy.py")):
-            default_dir = os.path.join(os.getcwd(), "vision-tool")
-        target_dir = default_dir
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.isfile(os.path.join(script_dir, "vision_proxy.py")):
+            target_dir = script_dir
+        else:
+            default_dir = os.path.join(script_dir, "vision-tool")
+            if not os.path.isdir(default_dir) or not os.path.isfile(os.path.join(default_dir, "vision_proxy.py")):
+                default_dir = os.path.join(os.getcwd(), "vision-tool")
+            target_dir = default_dir
 
     print()
     print(bold("╔══════════════════════════════════════════════╗"))
