@@ -26,8 +26,15 @@ Chains through free backends first, then paid fallbacks:
   Paid:   GPT-4o → GPT-4o-mini → Claude 3.5 Sonnet → Claude 3 Haiku →
           Llama 3.2 90B Vision → Qwen VL 8B
 
-Custom model (via OpenRouter):  --model "openai/gpt-4o" or VISION_MODEL env var
-  Any model name gets tried first, then falls back to the chain above.
+Custom model (auto-routes to best provider):
+  --model "gpt-4o"         → tries native OpenAI first, then OpenRouter
+  --model "claude-sonnet-4" → tries native Anthropic first, then OpenRouter
+  --model "gemini-2.5-flash" → tries native Gemini first, then OpenRouter
+  --model "openrouter/free"  → OpenRouter only
+  Set VISION_MODEL env var or DEFAULT_MODEL in config.json for persistence.
+
+Supported provider keys (set via setup.py or env vars):
+  GEMINI_API_KEY | OPENROUTER_API_KEY | OPENAI_API_KEY | ANTHROPIC_API_KEY
 
 Usage:
   python vision_proxy.py <image_or_video_path> [prompt text...] [--model NAME]
@@ -71,10 +78,15 @@ if sys.stderr is not None and hasattr(sys.stderr, 'buffer') and sys.stderr.buffe
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
 
+ALL_PROVIDER_KEYS = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+
+
 def load_config():
     keys = {
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
         "OPENROUTER_API_KEY": os.environ.get("OPENROUTER_API_KEY"),
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+        "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
         "DEFAULT_MODEL": os.environ.get("VISION_MODEL"),
     }
     if os.path.isfile(CONFIG_PATH):
@@ -87,14 +99,17 @@ def load_config():
             for k in list(keys):
                 if not keys[k]:
                     keys[k] = cfg.get(k)
-    present = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY") if keys.get(k)]
+    present = [k for k in ALL_PROVIDER_KEYS if keys.get(k)]
     if not present:
         raise RuntimeError(
             "No API keys configured.\n"
             "  Run setup.py to configure:  python setup.py\n"
-            "  Or set environment variables:\n"
+            "  Or set environment variables (any one is enough):\n"
             "    $env:GEMINI_API_KEY='your-key'\n"
-            "    $env:OPENROUTER_API_KEY='your-key'"
+            "    $env:OPENROUTER_API_KEY='your-key'\n"
+            "    $env:OPENAI_API_KEY='your-key'\n"
+            "    $env:ANTHROPIC_API_KEY='your-key'\n"
+            "    $env:VISION_MODEL='model-name'    (optional default model)"
         )
     return keys
 
@@ -324,6 +339,146 @@ def call_gemini_multi(frames, prompt, model="gemini-2.5-flash"):
     return result["candidates"][0]["content"]["parts"][0]["text"]
 
 
+def call_openai(b64data, mime, prompt, model):
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64data}"}},
+        ]}],
+    }
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {CFG['OPENAI_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+    )
+    resp = urllib.request.urlopen(req, timeout=120)
+    return json.loads(resp.read())["choices"][0]["message"]["content"]
+
+
+def call_openai_multi(frames, prompt, model):
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": build_multimodal_content(frames, prompt)}],
+    }
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {CFG['OPENAI_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+    )
+    resp = urllib.request.urlopen(req, timeout=120)
+    return json.loads(resp.read())["choices"][0]["message"]["content"]
+
+
+def call_anthropic(b64data, mime, prompt, model):
+    payload = {
+        "model": model,
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64data}},
+        ]}],
+    }
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(payload).encode(),
+        headers={
+            "x-api-key": CFG["ANTHROPIC_API_KEY"],
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        },
+    )
+    resp = urllib.request.urlopen(req, timeout=120)
+    return json.loads(resp.read())["content"][0]["text"]
+
+
+def call_anthropic_multi(frames, prompt, model):
+    content = [{"type": "text", "text": prompt}]
+    for data, mime in frames:
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": mime, "data": b64(data)},
+        })
+    payload = {
+        "model": model,
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": content}],
+    }
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(payload).encode(),
+        headers={
+            "x-api-key": CFG["ANTHROPIC_API_KEY"],
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        },
+    )
+    resp = urllib.request.urlopen(req, timeout=120)
+    return json.loads(resp.read())["content"][0]["text"]
+
+
+# ── Provider routing ───────────────────────────────────────────────────
+
+def get_providers_for_model(model):
+    """Return ordered list of (provider_name, native_model_name) tuples.
+
+    Tries native APIs first for recognised model patterns, then falls back
+    to OpenRouter (the universal gateway).  Each provider is only returned
+    once and only if its API key is already loaded in CFG.
+    """
+    ml = model.lower()
+    stripped = model
+    # Strip OpenRouter-style provider prefix
+    if '/' in model:
+        prefix = model.split('/', 1)[0].lower()
+        stripped = model.split('/', 1)[1]
+        if prefix in ("google",):
+            return _filter_providers([("gemini", stripped), ("openrouter", model)])
+        if prefix == "openai":
+            return _filter_providers([("openai", stripped), ("openrouter", model)])
+        if prefix == "anthropic":
+            return _filter_providers([("anthropic", stripped), ("openrouter", model)])
+        # Unknown prefix — OpenRouter only
+        return _filter_providers([("openrouter", model)])
+
+    # No prefix — detect from model name patterns
+    candidates = []
+    if ml.startswith("gemini"):
+        candidates.append(("gemini", stripped))
+    if ml.startswith(("gpt", "o1", "o3")) or ml.startswith("chatgpt"):
+        candidates.append(("openai", stripped))
+    if ml.startswith("claude"):
+        candidates.append(("anthropic", stripped))
+    candidates.append(("openrouter", model))
+    return _filter_providers(candidates)
+
+
+def _filter_providers(candidates):
+    """Remove duplicate providers and skip those without a configured key."""
+    PROVIDER_KEY_MAP = {
+        "gemini": "GEMINI_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+    }
+    seen = set()
+    result = []
+    for prov, m in candidates:
+        if prov in seen:
+            continue
+        seen.add(prov)
+        key_name = PROVIDER_KEY_MAP.get(prov)
+        if key_name and CFG and CFG.get(key_name):
+            result.append((prov, m))
+    return result
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 
 def analyze(file_path, prompt="", model=None):
@@ -332,9 +487,9 @@ def analyze(file_path, prompt="", model=None):
     Args:
         file_path: Absolute path to image or video file.
         prompt: Optional custom prompt. Auto-generated if empty.
-        model: Optional model name (via OpenRouter). Tried first, then
-               falls back to the built-in chain. Set VISION_MODEL env
-               var or DEFAULT_MODEL in config.json for a persistent default.
+        model: Optional model name. Auto-routes to the best provider
+               (native API if recognised, then OpenRouter).  Set via
+               VISION_MODEL env var or DEFAULT_MODEL in config.json.
 
     Returns:
         Description string from the first successful backend.
@@ -378,11 +533,9 @@ def analyze(file_path, prompt="", model=None):
             ("\u2605 Llama 3.2 90B Vision", lambda: call_openrouter_multi(frames, prompt, "meta-llama/llama-3.2-90b-vision-instruct")),
             ("\u2605 Qwen VL 8B", lambda: call_openrouter_multi(frames, prompt, "qwen/qwen3-vl-8b-instruct")),
         ]
+        # Insert custom model strategies (provider-aware)
         if model:
-            strategies.insert(0, (
-                f"\u2605 Custom: {model}",
-                lambda m=model: call_openrouter_multi(frames, prompt, m),
-            ))
+            _insert_model_strategies(strategies, model, "vid", frames, prompt)
     else:
         data, mime = resize_image(file_path, 1024)
         img_b64 = b64(data)
@@ -402,10 +555,7 @@ def analyze(file_path, prompt="", model=None):
             ("\u2605 Qwen VL 8B", lambda: call_openrouter(img_b64, mime, prompt, "qwen/qwen3-vl-8b-instruct")),
         ]
         if model:
-            strategies.insert(0, (
-                f"\u2605 Custom: {model}",
-                lambda m=model: call_openrouter(img_b64, mime, prompt, m),
-            ))
+            _insert_model_strategies(strategies, model, "img", img_b64, mime, prompt)
 
     last_error = ""
     for name, fn in strategies:
@@ -422,6 +572,40 @@ def analyze(file_path, prompt="", model=None):
     raise RuntimeError(f"All vision backends failed. Last error: {last_error}")
 
 
+def _insert_model_strategies(strategies, model, kind, *args):
+    """Insert provider-aware strategies for a custom model at the front.
+
+    Each provider (gemini, openai, anthropic, openrouter) is tried with
+    its native API first, then OpenRouter as the universal fallback.
+    Only providers with a configured key are included.
+    """
+    dispatch = {
+        "gemini": (call_gemini, call_gemini_multi),
+        "openai": (call_openai, call_openai_multi),
+        "anthropic": (call_anthropic, call_anthropic_multi),
+        "openrouter": (call_openrouter, call_openrouter_multi),
+    }
+    is_vid = kind == "vid"
+    # Reverse so the first matching provider ends up first in strategies
+    for prov, native_model in reversed(get_providers_for_model(model)):
+        pair = dispatch.get(prov)
+        if not pair:
+            continue
+        fn_img, fn_vid = pair
+        fn = fn_vid if is_vid else fn_img
+        if is_vid:
+            strategies.insert(0, (
+                f"\u2605 {prov.title()}: {model}",
+                lambda m=native_model, f=fn: f(args[0], prompt, m),
+            ))
+        else:
+            strategies.insert(0, (
+                f"\u2605 {prov.title()}: {model}",
+                lambda m=native_model, f=fn: f(args[0], args[1], prompt, m),
+            ))
+
+
+
 # ── CLI entry point ─────────────────────────────────────────────────────
 
 def main():
@@ -432,7 +616,7 @@ def main():
     )
     parser.add_argument("file", help="Path to image or video file")
     parser.add_argument("prompt", nargs="*", help="Optional prompt text")
-    parser.add_argument("--model", "-m", help="Custom model name (via OpenRouter)")
+    parser.add_argument("--model", "-m", help="Custom model name (auto-routes to best provider)")
     args = parser.parse_args()
 
     file_path = args.file

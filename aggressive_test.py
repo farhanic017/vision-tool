@@ -87,7 +87,7 @@ json.dump({'GEMINI_API_KEY': '', 'OPENROUTER_API_KEY': ''}, open('config.json', 
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'gk\nork\n\n', timeout=5)
+    out, err = p.communicate(input=b'gk\nork\nok\nak\n\n', timeout=5)
     out_s = out.decode('utf-8', errors='replace')
     check('add-key: shows header', 'Add API Key' in out_s)
     check('add-key: exit 0', p.returncode == 0)
@@ -232,7 +232,7 @@ json.dump({'GEMINI_API_KEY': 'old_g', 'OPENROUTER_API_KEY': 'old_o', 'DEFAULT_MO
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'\n\n\n', timeout=60)
+    out, err = p.communicate(input=b'\n\n\n\n\n', timeout=60)
     check('enter_keys: uses defaults', p.returncode == 0)
     cfg = json.load(open('config.json'))
     check('enter_keys: preserved Gemini', cfg.get('GEMINI_API_KEY') == 'old_g')
@@ -247,6 +247,8 @@ check('setup_later: creates config', os.path.isfile('config.json'))
 cfg = json.load(open('config.json'))
 check('setup_later: empty Gemini', cfg.get('GEMINI_API_KEY') == '')
 check('setup_later: empty OpenRouter', cfg.get('OPENROUTER_API_KEY') == '')
+check('setup_later: empty OpenAI', cfg.get('OPENAI_API_KEY') == '')
+check('setup_later: empty Anthropic', cfg.get('ANTHROPIC_API_KEY') == '')
 
 # 21. setup_later with existing keys (should not overwrite)
 json.dump({'GEMINI_API_KEY': 'gk', 'OPENROUTER_API_KEY': 'ork'}, open('config.json', 'w'))
@@ -260,11 +262,13 @@ cfg_cleanup()
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'gk\nork\n\n', timeout=60)
+    out, err = p.communicate(input=b'gk\nork\nok\nak\n\n', timeout=60)
     check('enter_keys: fresh saves Gemini', p.returncode == 0)
     cfg = json.load(open('config.json'))
     check('enter_keys: fresh Gemini', cfg.get('GEMINI_API_KEY') == 'gk')
     check('enter_keys: fresh OpenRouter', cfg.get('OPENROUTER_API_KEY') == 'ork')
+    check('enter_keys: fresh OpenAI', cfg.get('OPENAI_API_KEY') == 'ok')
+    check('enter_keys: fresh Anthropic', cfg.get('ANTHROPIC_API_KEY') == 'ak')
 except Exception as e:
     check('enter_keys: fresh', False, str(e))
 
@@ -279,10 +283,12 @@ check('dim: works piped', isinstance(s.dim('hello'), str))
 p = subprocess.Popen([sys.executable, 'setup.py'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'1\n\n\n\n', timeout=60)
+    out, err = p.communicate(input=b'1\n\n\n\n\n\n', timeout=60)
     out_s = out.decode('utf-8', errors='replace')
     check('opt1: shows Gemini prompt', 'Gemini API key' in out_s)
     check('opt1: shows OpenRouter prompt', 'OpenRouter API key' in out_s)
+    check('opt1: shows OpenAI prompt', 'OpenAI API key' in out_s)
+    check('opt1: shows Anthropic prompt', 'Anthropic API key' in out_s)
 except Exception as e:
     check('opt1: shows prompts', False, str(e))
 

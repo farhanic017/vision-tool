@@ -120,6 +120,42 @@ def test_openrouter(key):
         return False
 
 
+def test_openai(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/models",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def test_anthropic(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/models",
+            headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+PROVIDER_LABELS = [
+    ("GEMINI_API_KEY", "Gemini"),
+    ("OPENROUTER_API_KEY", "OpenRouter"),
+    ("OPENAI_API_KEY", "OpenAI"),
+    ("ANTHROPIC_API_KEY", "Anthropic"),
+]
+
+
 def show_keys():
     """Show current key status."""
     existing = {}
@@ -131,12 +167,11 @@ def show_keys():
                 existing = data
         except (json.JSONDecodeError, IOError):
             pass
-    gem = existing.get("GEMINI_API_KEY", "")
-    ork = existing.get("OPENROUTER_API_KEY", "")
+    for key, label in PROVIDER_LABELS:
+        val = existing.get(key, "")
+        print(f"  {label + ' API key':22s} {green('set') if val else yellow('not set')}")
     mdl = existing.get("DEFAULT_MODEL", "")
-    print(f"  Gemini API key:     {green('set') if gem else yellow('not set')}")
-    print(f"  OpenRouter API key: {green('set') if ork else yellow('not set')}")
-    print(f"  Default model:      {cyan(mdl) if mdl else dim('(auto-fallback chain)')}")
+    print(f"  {'Default model':22s} {cyan(mdl) if mdl else dim('(auto-fallback chain)')}")
 
 
 # ── key entry flow ────────────────────────────────────────────────────────
@@ -156,35 +191,46 @@ def enter_keys():
         except (json.JSONDecodeError, IOError):
             pass
 
+    print("  Enter at least one API key (press Enter to keep existing / skip).")
+    print()
     gemini_key = prompt(
         "Gemini API key",
         default=existing.get("GEMINI_API_KEY", ""),
-        secret=True,
+        secret=True, optional=True,
     )
     openrouter_key = prompt(
         "OpenRouter API key",
         default=existing.get("OPENROUTER_API_KEY", ""),
-        secret=True,
+        secret=True, optional=True,
+    )
+    openai_key = prompt(
+        "OpenAI API key",
+        default=existing.get("OPENAI_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    anthropic_key = prompt(
+        "Anthropic API key",
+        default=existing.get("ANTHROPIC_API_KEY", ""),
+        secret=True, optional=True,
     )
 
     print()
     print(bold("  Validating..."))
     gemini_ok = test_gemini(gemini_key)
     openrouter_ok = test_openrouter(openrouter_key)
+    openai_ok = test_openai(openai_key)
+    anthropic_ok = test_anthropic(anthropic_key)
 
-    if gemini_ok:
-        print(f"    {green('Gemini API key works')}")
-    else:
-        print(f"    {yellow('Gemini key not verified (saved but may not work)')}")
+    for name, ok in [("Gemini", gemini_ok), ("OpenRouter", openrouter_ok),
+                      ("OpenAI", openai_ok), ("Anthropic", anthropic_ok)]:
+        if ok:
+            print(f"    {green(f'{name} API key works')}")
+        else:
+            print(f"    {yellow(f'{name} key not verified (saved but may not work)')}")
 
-    if openrouter_ok:
-        print(f"    {green('OpenRouter key works')}")
-    else:
-        print(f"    {yellow('OpenRouter key not verified (saved but may not work)')}")
-
-    if not gemini_ok and not openrouter_ok:
+    if not any([gemini_ok, openrouter_ok, openai_ok, anthropic_ok]):
         print()
-        print(yellow("  Neither key was confirmed working. The tool will still use"))
+        print(yellow("  No key was confirmed working. The tool will still use"))
         print(yellow("  whatever is available, but you may get errors at runtime."))
 
     print()
@@ -197,6 +243,8 @@ def enter_keys():
     config = {
         "GEMINI_API_KEY": gemini_key,
         "OPENROUTER_API_KEY": openrouter_key,
+        "OPENAI_API_KEY": openai_key,
+        "ANTHROPIC_API_KEY": anthropic_key,
         "DEFAULT_MODEL": default_model,
     }
     securesave(config)
@@ -231,8 +279,8 @@ def choose_option():
     print(bold("  Select an option:"))
     print()
     print(bold("  1)") + "  Enter API key now")
-    print(dim("     Provide your Gemini / OpenRouter key. Validated and"))
-    print(dim("     saved securely to config.json with locked permissions."))
+    print(dim("     Provide any provider key (Gemini, OpenRouter, OpenAI, Anthropic)."))
+    print(dim("     Validated and saved securely with locked permissions."))
     print()
     print(bold("  2)") + "  Add later")
     print(dim("     Skip key setup. vision-tool won't work until you"))
@@ -260,16 +308,14 @@ def setup_later():
         except (json.JSONDecodeError, IOError):
             pass
 
-    has_keys = any(v for v in (existing.get("GEMINI_API_KEY"), existing.get("OPENROUTER_API_KEY")))
+    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+    has_keys = any(existing.get(k) for k in all_provider_keys)
     if has_keys:
         print(yellow("  Keys already configured — nothing to skip."))
         return
 
-    config = {
-        "GEMINI_API_KEY": "",
-        "OPENROUTER_API_KEY": "",
-        "DEFAULT_MODEL": "",
-    }
+    config = {k: "" for k in all_provider_keys}
+    config["DEFAULT_MODEL"] = ""
     securesave(config)
     print()
     print(yellow(bold("  Keys not configured — vision-tool will not work until you add them.")))
@@ -280,6 +326,8 @@ def setup_later():
     print("  Get your free keys at:")
     print("    Gemini:    https://aistudio.google.com/apikey")
     print("    OpenRouter: https://openrouter.ai/keys")
+    print("    OpenAI:     https://platform.openai.com/api-keys")
+    print("    Anthropic:  https://console.anthropic.com/keys")
     print()
 
 
