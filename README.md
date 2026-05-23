@@ -81,6 +81,25 @@ It stops at the first backend that returns a result.
 > The paid backends only try if your OpenRouter account has billing configured.
 > If you only have a free OpenRouter key, the first 6 free models will still work.
 
+## Capabilities & Limitations
+
+**Images** — Provides detailed descriptions of visible text, colors, layout, UI elements — but the image is downscaled to **max 1024px**, so tiny details/fine text may blur.
+
+**Videos** — Extracts **up to 8 evenly-spaced keyframes** via ffmpeg, analyzes them sequentially for UI flow, actions, scene changes, layout, text.
+
+**What determines quality** — Chains through 12 backends (6 free → 6 paid). The free ones (Gemini Flash, NVIDIA, Gemma) are decent but paid ones (GPT-4o, Claude Sonnet) give much richer detail.
+
+**Caveats:**
+- Image capped at 1024px → small UI text/icons may be unreadable
+- Video limited to 8 frames → fast transitions get missed
+- First successful backend wins (not necessarily the best one) — if a free model returns something half-decent first, it stops there
+
+**Getting better results** — Pass a specific prompt instead of the generic default. Example:
+
+```bash
+python vision_proxy.py screenshot.png "Extract ALL visible text exactly as shown, describe the exact layout coordinates, colors, font sizes"
+```
+
 ## Getting API keys
 
 You need at least **one** of these:
