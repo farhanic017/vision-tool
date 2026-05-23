@@ -8,7 +8,7 @@
 # =============================================================================
 
 """
-vision_mcp_server.py — MCP server for opencode-vision.
+vision_mcp_server.py — MCP server for vision-tool.
 Copyright (C) 2026 Farhan Dhrubo
 
 This program is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ Tools:
 Add to any MCP client:
   {
     "mcpServers": {
-      "opencode-vision": {
+      "vision-tool": {
         "command": "python",
         "args": ["path/to/vision_mcp_server.py"]
       }
@@ -139,7 +139,7 @@ def process_message(msg):
                         for name, info in TOOLS.items()
                     }
                 },
-                "serverInfo": {"name": "opencode-vision", "version": "1.0.0"},
+                "serverInfo": {"name": "vision-tool", "version": "1.0.0"},
             },
         }
 
@@ -245,7 +245,7 @@ def run_http(port=3789):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="opencode-vision MCP server")
+    parser = argparse.ArgumentParser(description="vision-tool MCP server")
     parser.add_argument("--http", type=int, nargs="?", const=3789, default=0,
                         help="Run as HTTP server on given port (default: 3789). Omit for stdio mode.")
     args = parser.parse_args()

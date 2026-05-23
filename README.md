@@ -1,10 +1,10 @@
-# opencode-vision
+# vision-tool
 
-> Created by [Farhan Dhrubo](https://github.com/farhanic017) — [Submit an issue](https://github.com/farhanic017/vision-for-opencode/issues)
+> Created by [Farhan Dhrubo](https://github.com/farhanic017) — [Submit an issue](https://github.com/farhanic017/vision-tool/issues)
 
 **Image & video analysis for AI coding assistants that don't have eyes.**
 
-Opencode-vision lets any AI model — including local models, free APIs, or
+vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
 images and videos by routing them through 12 external vision backends.
 
@@ -23,7 +23,7 @@ images and videos by routing them through 12 external vision backends.
 Just send this URL to your AI assistant:
 
 ```
-https://github.com/farhanic017/vision-for-opencode
+https://github.com/farhanic017/vision-tool
 ```
 
 Your AI will clone, install deps, set up API keys, and configure everything
@@ -34,13 +34,13 @@ any AI agent reads and follows.
 
 ```bash
 # 1. Clone
-git clone https://github.com/farhanic017/vision-for-opencode.git
-cd vision-for-opencode
+git clone https://github.com/farhanic017/vision-tool.git
+cd vision-tool
 
 # 2. Install deps
 pip install pillow
 
-# 3. Run setup (adds your API keys)
+# 3. Run setup (choose: enter keys now or add later)
 python setup.py
 
 # 4. Analyse anything
@@ -90,7 +90,8 @@ You need at least **one** of these:
 | **Gemini API key** | https://aistudio.google.com/apikey | Backends 1–2 (native image + video, free tier) |
 | **OpenRouter API key** | https://openrouter.ai/keys | Backends 3–12 (free + paid vision models) |
 
-Run `python setup.py` — it validates each key before saving.
+Run `python setup.py` — choose to enter keys now or add later.
+Add keys later anytime with: `python setup.py --add-key`
 
 ## Integration guides
 
@@ -115,7 +116,7 @@ Add the MCP server to your client's config. This exposes `analyze_image` and
 ```jsonc
 {
   "mcp": {
-    "opencode-vision": {
+    "vision-tool": {
       "type": "local",
       "command": ["python", "path/to/vision_mcp_server.py"],
       "enabled": true
@@ -129,7 +130,7 @@ Add the MCP server to your client's config. This exposes `analyze_image` and
 ```json
 {
   "mcpServers": {
-    "opencode-vision": {
+    "vision-tool": {
       "command": "python",
       "args": ["path/to/vision_mcp_server.py"]
     }
@@ -142,7 +143,7 @@ Add the MCP server to your client's config. This exposes `analyze_image` and
 In Cursor's MCP server settings:
 
 ```
-Name: opencode-vision
+Name: vision-tool
 Type: command
 Command: python path/to/vision_mcp_server.py
 ```
@@ -158,7 +159,7 @@ Add to your `opencode.jsonc` under `skills.paths`:
 {
   "skills": {
     "paths": [
-      "path/to/vision-for-opencode"
+      "path/to/vision-tool"
     ]
   }
 }
@@ -183,7 +184,7 @@ Works identically with any local model in any MCP client:
 {
   "model": "ollama/llama3.2",
   "mcp": {
-    "opencode-vision": {
+    "vision-tool": {
       "type": "local",
       "command": ["python", "path/to/vision_mcp_server.py"],
       "enabled": true
@@ -333,7 +334,7 @@ User: "What's in this image?"
 ## File structure
 
 ```
-vision-for-opencode/
+vision-tool/
 ├── README.md                 # This file
 ├── SKILL.md                  # opencode skill definition (AI reads this to install)
 ├── install.py                # Auto-installer (one command setup)

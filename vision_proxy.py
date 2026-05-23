@@ -254,7 +254,7 @@ def call_openrouter(b64data, mime, prompt, model):
         headers={
             "Authorization": f"Bearer {CFG['OPENROUTER_API_KEY']}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/opencode-vision",
+            "HTTP-Referer": "https://github.com/farhanic017/vision-tool",
         },
     )
     resp = urllib.request.urlopen(req, timeout=120)
@@ -272,7 +272,7 @@ def call_openrouter_multi(frames, prompt, model):
         headers={
             "Authorization": f"Bearer {CFG['OPENROUTER_API_KEY']}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/opencode-vision",
+            "HTTP-Referer": "https://github.com/farhanic017/vision-tool",
         },
     )
     resp = urllib.request.urlopen(req, timeout=120)

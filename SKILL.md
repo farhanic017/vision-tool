@@ -1,5 +1,5 @@
 ---
-name: opencode-vision
+name: vision-tool
 description: >
   Analyse images and videos when the active model lacks native vision.
   Extracts text, UI elements, colours, layout, actions, and scene changes
@@ -8,7 +8,7 @@ description: >
   12 vision backends — free models first (Gemini, NVIDIA, Gemma 4),
   then paid models (GPT-4o, Claude, Llama, Qwen VL) via OpenRouter.
 triggers:
-  - opencode-vision
+  - vision-tool
   - vision
   - image
   - video
@@ -23,7 +23,7 @@ triggers:
   - setup vision
 ---
 
-# opencode-vision
+# vision-tool
 
 Brings image & video analysis to any opencode model — even ones without
 built-in vision (e.g. big-pickle, DeepSeek, local models).
@@ -34,8 +34,8 @@ When a user drops this repo URL into their AI, do this:
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/farhanic017/vision-for-opencode.git
-   cd vision-for-opencode
+   git clone https://github.com/farhanic017/vision-tool.git
+   cd vision-tool
    ```
 
 2. **Install dependencies:**
@@ -47,12 +47,14 @@ When a user drops this repo URL into their AI, do this:
    ```bash
    python setup.py
    ```
+   Choose option 1 to enter keys now, or option 2 to add later.
+   Add keys anytime: `python setup.py --add-key`
 
 4. **Add MCP server to config:**
    - For **opencode** → edit `opencode.jsonc`:
      ```jsonc
      "mcp": {
-       "opencode-vision": {
+       "vision-tool": {
          "type": "local",
          "command": ["python", "/full/path/to/vision_mcp_server.py"],
          "enabled": true
@@ -62,7 +64,7 @@ When a user drops this repo URL into their AI, do this:
    - For **Claude Desktop** → edit `claude_desktop_config.json`:
      ```json
      "mcpServers": {
-       "opencode-vision": {
+       "vision-tool": {
          "command": "python",
          "args": ["/full/path/to/vision_mcp_server.py"]
        }
@@ -70,7 +72,7 @@ When a user drops this repo URL into their AI, do this:
      ```
    - For **Cursor** → add in MCP server settings:
      ```
-     Name: opencode-vision
+     Name: vision-tool
      Type: command
      Command: python /full/path/to/vision_mcp_server.py
      ```
@@ -78,7 +80,7 @@ When a user drops this repo URL into their AI, do this:
 5. **Also add as opencode skill** (optional, for trigger-based activation):
    ```jsonc
    "skills": {
-     "paths": ["/full/path/to/vision-for-opencode"]
+     "paths": ["/full/path/to/vision-tool"]
    }
    ```
 
@@ -118,7 +120,11 @@ Run `setup.py` once to add API keys:
 
     python path/to/vision/setup.py
 
-Keys are stored in `config.json` next to the script. No keys are hardcoded.
+Choose option 1 to enter keys now (validated, locked to you only).
+Choose option 2 to add later — vision-tool won't work until you add them.
+Add keys later with: `python setup.py --add-key`
+
+Keys are stored in `config.json` next to the script (gitignored, locked permissions).
 
 ## Usage
 

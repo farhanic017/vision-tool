@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-install.py — One-command installer for opencode-vision.
+install.py — One-command installer for vision-tool.
 Copyright (C) 2026 Farhan Dhrubo
 
 Usage:
@@ -12,9 +12,9 @@ Usage:
 What it does:
   1. Clones the repo (if not already local)
   2. Installs pip dependencies (pillow)
-  3. Runs setup.py to configure API keys
-  4. Detects your AI client and auto-configures MCP server
-  5. Offers to install invisible watchdog (Windows only)
+  3. Detects your AI client and auto-configures MCP server
+  4. Offers to install invisible watchdog (Windows only)
+  5. Prompts to configure API keys (enter now or add later)
 """
 
 import argparse
@@ -25,8 +25,8 @@ import subprocess
 import sys
 import urllib.request
 
-REPO_URL = "https://github.com/farhanic017/vision-for-opencode.git"
-REPO_NAME = "vision-for-opencode"
+REPO_URL = "https://github.com/farhanic017/vision-tool.git"
+REPO_NAME = "vision-tool"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ def step_configure(target_dir, auto=False):
     if not clients:
         print(f"  {yellow('⚠')} No supported AI client config found.")
         print(f"     Manual setup: add to your MCP config:")
-        print(f'     {{"mcpServers": {{"opencode-vision": {{"command": "{sys.executable}", "args": ["{os.path.join(target_dir, "vision_mcp_server.py")}"]}}}}}}')
+        print(f'     {{"mcpServers": {{"vision-tool": {{"command": "{sys.executable}", "args": ["{os.path.join(target_dir, "vision_mcp_server.py")}"]}}}}}}')
         return
 
     for name, config_path in clients:
@@ -193,11 +193,11 @@ def step_configure(target_dir, auto=False):
 
             if mcp_key not in config:
                 config[mcp_key] = {}
-            config[mcp_key]["opencode-vision"] = server_entry
+            config[mcp_key]["vision-tool"] = server_entry
 
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
-            print(f"  {green('✔')} Added opencode-vision to {name}")
+            print(f"  {green('✔')} Added vision-tool to {name}")
 
             # Also add as skill for opencode
             if name == "opencode":
@@ -238,7 +238,7 @@ def step_watchdog(target_dir, auto=False):
             # Add to Windows startup folder
             startup_dir = os.path.expanduser("~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup")
             if os.path.isdir(startup_dir):
-                lnk_path = os.path.join(startup_dir, "opencode-vision.url")
+                lnk_path = os.path.join(startup_dir, "vision-tool.url")
                 with open(lnk_path, "w") as f:
                     f.write("[InternetShortcut]\n")
                     f.write(f"URL=file:///{vbs_path.replace(' ', '%20')}\n")
@@ -253,7 +253,7 @@ def step_watchdog(target_dir, auto=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Install opencode-vision")
+    parser = argparse.ArgumentParser(description="Install vision-tool")
     parser.add_argument("--auto", action="store_true", help="Non-interactive mode")
     parser.add_argument("--repo", default=REPO_URL, help="Repository URL to clone")
     parser.add_argument("--target", default=None, help="Install target directory")
@@ -263,14 +263,14 @@ def main():
     if args.target:
         target_dir = args.target
     else:
-        default_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision-for-opencode")
+        default_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision-tool")
         if not os.path.isdir(default_dir) or not os.path.isfile(os.path.join(default_dir, "vision_proxy.py")):
-            default_dir = os.path.join(os.getcwd(), "vision-for-opencode")
+            default_dir = os.path.join(os.getcwd(), "vision-tool")
         target_dir = default_dir
 
     print()
     print(bold("╔══════════════════════════════════════════════╗"))
-    print(bold("║      opencode-vision  —  Installer           ║"))
+    print(bold("║      vision-tool  —  Installer                ║"))
     print(bold("╚══════════════════════════════════════════════╝"))
     print()
 
@@ -284,24 +284,23 @@ def main():
     step_deps(target_dir)
     print()
 
-    # ── 3. API keys ─────────────────────────────────────────────
-    print(bold("  Step 3: Configure API keys"))
-    if args.auto:
-        # Check if config already exists
-        config_path = os.path.join(target_dir, "config.json")
-        if not os.path.isfile(config_path):
-            print(f"  {yellow('⚠')} --auto mode: skipping setup. Run 'python setup.py' manually.")
-    else:
-        step_setup(target_dir)
-    print()
-
-    # ── 4. AI client config ─────────────────────────────────────
-    print(bold("  Step 4: Configure AI client"))
+    # ── 3. AI client config ─────────────────────────────────────
+    print(bold("  Step 3: Configure AI client"))
     step_configure(target_dir, auto=args.auto)
     print()
 
-    # ── 5. Watchdog (Windows) ──────────────────────────────────
+    # ── 4. Watchdog (Windows) ──────────────────────────────────
     step_watchdog(target_dir, auto=args.auto)
+    print()
+
+    # ── 5. API keys ─────────────────────────────────────────────
+    print(bold("  Step 5: Configure API keys"))
+    if args.auto:
+        config_path = os.path.join(target_dir, "config.json")
+        if not os.path.isfile(config_path):
+            print(f"  {yellow('⚠')} --auto mode: skipping setup. Run 'python setup.py' or 'python setup.py --add-key' manually.")
+    else:
+        step_setup(target_dir)
     print()
 
     # ── Done ────────────────────────────────────────────────────
@@ -314,6 +313,19 @@ def main():
     print()
     print("  Tell your AI:  \"analyse this image\" or \"look at this video\"")
     print()
+    if not args.auto:
+        config_path = os.path.join(target_dir, "config.json")
+        if os.path.isfile(config_path):
+            try:
+                with open(config_path) as f:
+                    cfg = json.load(f)
+                has_keys = any(v for v in (cfg.get("GEMINI_API_KEY"), cfg.get("OPENROUTER_API_KEY")))
+                if not has_keys:
+                    print(yellow("  Keys not configured yet. Run when ready:"))
+                    print(f"    python \"{os.path.join(target_dir, 'setup.py')}\" --add-key")
+                    print()
+            except (json.JSONDecodeError, IOError):
+                pass
 
 
 if __name__ == "__main__":

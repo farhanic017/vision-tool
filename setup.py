@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#  Vision Tool — First-run configuration wizard for opencode-vision
+#  vision-tool — First-run API key setup
 #  Copyright (c) 2026 Farhan Dhrubo  <farhaiee123@gmail.com>
 #  License: GPL-3.0  —  https://github.com/farhanic017/vision-tool
 #
@@ -8,11 +8,12 @@
 # =============================================================================
 
 """
-setup.py — First-run configuration wizard for opencode-vision.
+setup.py — First-run API key setup for vision-tool.
 Copyright (C) 2026 Farhan Dhrubo
 
-This program is free software: you can redistribute it and/or modify
-it under the ...
+Usage:
+  python setup.py              # Interactive: choose enter now or add later
+  python setup.py --add-key    # Add keys later (skips the choice prompt)
 """
 
 import json
@@ -21,6 +22,7 @@ import sys
 import urllib.request
 import urllib.error
 import getpass
+import subprocess
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
@@ -39,12 +41,18 @@ def yellow(text):
     return f"\033[93m{text}\033[0m" if sys.stdout.isatty() else text
 
 
+def cyan(text):
+    return f"\033[96m{text}\033[0m" if sys.stdout.isatty() else text
+
+
+def dim(text):
+    return f"\033[2m{text}\033[0m" if sys.stdout.isatty() else text
+
+
 def prompt(label, default="", secret=False):
-    # Do not display default when secret to avoid leaking in prompt
     d = f" [{default}]" if default and not secret else ""
     while True:
         if secret:
-            # getpass hides input; strip to remove surrounding whitespace
             val = getpass.getpass(f"  {label}{d}: ").strip()
         else:
             val = input(f"  {label}{d}: ").strip()
@@ -52,7 +60,32 @@ def prompt(label, default="", secret=False):
             val = default
         if val:
             return val
-        print(yellow("  ‣ Please enter a value or press Ctrl+C to quit."))
+        print(yellow("  Please enter a value or press Ctrl+C to quit."))
+
+
+def confirm(label, default=True):
+    options = " [Y/n]" if default else " [y/N]"
+    val = input(f"  {label}{options}: ").strip().lower()
+    if not val:
+        return default
+    return val in ("y", "yes")
+
+
+def securesave(config):
+    """Save config with restricted file permissions."""
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
+    if os.name == "nt":
+        try:
+            user = os.environ.get("USERNAME", "")
+            subprocess.run(
+                f'icacls "{CONFIG_PATH}" /inheritance:r /grant "{user}:(R,W)" /grant "SYSTEM:(R)"',
+                shell=True, capture_output=True, timeout=10,
+            )
+        except Exception:
+            pass
+    else:
+        os.chmod(CONFIG_PATH, 0o600)
 
 
 def test_gemini(key):
@@ -84,35 +117,32 @@ def test_openrouter(key):
         return False
 
 
-# ── main ─────────────────────────────────────────────────────────────────
-
-
-def main():
-    print()
-    print(bold("╔══════════════════════════════════════════════╗"))
-    print(bold("║      opencode-vision  —  Setup Wizard        ║"))
-    print(bold("╚══════════════════════════════════════════════╝"))
-    print()
-    print("This tool lets AI coding assistants (like OpenCode, Claude Code,")
-    print("Cursor, etc.) analyse images and videos even if the model")
-    print("doesn't have built-in vision.")
-    print()
-    print("You need at least ONE API key to get started.  Both are free:")
-    print(f"  {bold('①')}  {bold('Gemini API key')}   — {green('free')}, handles images & video natively")
-    print(f"  {bold('②')}  {bold('OpenRouter key')}   — {green('free')} tier, falls back to free vision models")
-    print()
-    print("Get your keys at:")
-    print("  • Gemini:    https://aistudio.google.com/apikey")
-    print("  • OpenRouter: https://openrouter.ai/keys")
-    print()
-
+def show_keys():
+    """Show current key status."""
     existing = {}
     if os.path.isfile(CONFIG_PATH):
         try:
             with open(CONFIG_PATH) as f:
                 existing = json.load(f)
-            print(yellow(f"  Existing config found at {CONFIG_PATH}"))
-            print(yellow("  Press Enter to keep current values, or type new ones."))
+        except (json.JSONDecodeError, IOError):
+            pass
+    gem = existing.get("GEMINI_API_KEY", "")
+    ork = existing.get("OPENROUTER_API_KEY", "")
+    print(f"  Gemini API key:     {green('set') if gem else yellow('not set')}")
+    print(f"  OpenRouter API key: {green('set') if ork else yellow('not set')}")
+
+
+# ── key entry flow ────────────────────────────────────────────────────────
+
+
+def enter_keys():
+    """Prompt user for API keys, validate, and save."""
+    existing = {}
+    if os.path.isfile(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH) as f:
+                existing = json.load(f)
+            print(yellow("  Existing config found — press Enter to keep current values."))
             print()
         except (json.JSONDecodeError, IOError):
             pass
@@ -128,49 +158,119 @@ def main():
         secret=True,
     )
 
-    # ── Validate ────────────────────────────────────────────────────
     print()
-    print(bold("  Validating…"))
+    print(bold("  Validating..."))
     gemini_ok = test_gemini(gemini_key)
     openrouter_ok = test_openrouter(openrouter_key)
 
     if gemini_ok:
-        print(f"    {green('✔ Gemini API key works')}")
+        print(f"    {green('Gemini API key works')}")
     else:
-        print(f"    {yellow('⚠ Gemini key not verified (saved but may not work)')}")
+        print(f"    {yellow('Gemini key not verified (saved but may not work)')}")
 
     if openrouter_ok:
-        print(f"    {green('✔ OpenRouter key works')}")
+        print(f"    {green('OpenRouter key works')}")
     else:
-        print(f"    {yellow('⚠ OpenRouter key not verified (saved but may not work)')}")
+        print(f"    {yellow('OpenRouter key not verified (saved but may not work)')}")
 
     if not gemini_ok and not openrouter_ok:
         print()
-        print(yellow("  ⚠ Neither key was confirmed working.  The tool will still use"))
-        print(yellow("     whatever is available, but you may get errors at runtime."))
+        print(yellow("  Neither key was confirmed working. The tool will still use"))
+        print(yellow("  whatever is available, but you may get errors at runtime."))
 
-    # ── Save ────────────────────────────────────────────────────────
     config = {
         "GEMINI_API_KEY": gemini_key,
         "OPENROUTER_API_KEY": openrouter_key,
     }
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+    securesave(config)
 
     print()
-    print(green(f"  ✔ Saved to {CONFIG_PATH}"))
+    print(green(f"  Saved to {CONFIG_PATH} (permissions locked to you only)"))
     print()
-    print(bold("  You're all set!  Now tell your AI assistant:"))
+    print(bold("  You are all set!"))
     print()
-    print('    "Analyse this image:"')
-    print(f'      python {os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision_proxy.py")} screenshot.png')
+    print('  Tell your AI: "analyse this image" or "look at this video"')
     print()
-    print('    "Analyse this video:"')
-    print(f'      python {os.path.join(os.path.dirname(os.path.abspath(__file__)), "vision_proxy.py")} demo.mp4')
+
+
+# ── option selector ────────────────────────────────────────────────────────
+
+
+def choose_option():
+    """Show 2-option selection at start of setup."""
     print()
-    print("  For opencode users: add the vision skill to your")
-    print("  opencode.jsonc config.  See README.md for details.")
+    print(bold("╔══════════════════════════════════════════════╗"))
+    print(bold("║      vision-tool  —  API Key Setup           ║"))
+    print(bold("╚══════════════════════════════════════════════╝"))
     print()
+    print("vision-tool needs at least one API key to analyse images & videos.")
+    print("Keys are stored in config.json (gitignored, locked to you only).")
+    print()
+
+    if os.path.isfile(CONFIG_PATH):
+        show_keys()
+        print()
+
+    print(bold("  Select an option:"))
+    print()
+    print(bold("  1)") + "  Enter API key now")
+    print(dim("     Provide your Gemini / OpenRouter key. Validated and"))
+    print(dim("     saved securely to config.json with locked permissions."))
+    print()
+    print(bold("  2)") + "  Add later")
+    print(dim("     Skip key setup. vision-tool won't work until you"))
+    print(dim('     add keys. Run later:') + bold(' python setup.py --add-key'))
+    print()
+
+    while True:
+        choice = input("  Enter your choice (1 or 2): ").strip()
+        if choice == "1":
+            return "now"
+        if choice == "2":
+            return "later"
+        print(yellow("  Please enter 1 or 2."))
+
+
+def setup_later():
+    """Create blank config with placeholders and warn user."""
+    config = {
+        "GEMINI_API_KEY": "",
+        "OPENROUTER_API_KEY": "",
+    }
+    securesave(config)
+    print()
+    print(yellow(bold("  Keys not configured — vision-tool will not work until you add them.")))
+    print()
+    print("  To add your API keys later, run:")
+    print(bold(f"    python {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setup.py')} --add-key"))
+    print()
+    print("  Get your free keys at:")
+    print("    Gemini:    https://aistudio.google.com/apikey")
+    print("    OpenRouter: https://openrouter.ai/keys")
+    print()
+
+
+# ── main ─────────────────────────────────────────────────────────────────
+
+
+def main():
+    add_key_mode = "--add-key" in sys.argv
+
+    if add_key_mode:
+        print()
+        print(bold("╔══════════════════════════════════════════════╗"))
+        print(bold("║      vision-tool  —  Add API Key             ║"))
+        print(bold("╚══════════════════════════════════════════════╝"))
+        print()
+        enter_keys()
+        return
+
+    choice = choose_option()
+
+    if choice == "now":
+        enter_keys()
+    else:
+        setup_later()
 
 
 if __name__ == "__main__":

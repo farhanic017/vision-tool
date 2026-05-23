@@ -1,4 +1,4 @@
-' vision_watchdog.vbs — Invisible background process manager for opencode-vision.
+' vision_watchdog.vbs — Invisible background process manager for vision-tool.
 ' Copyright (C) 2026 Farhan Dhrubo
 '
 ' Licensed under GPLv3 — see LICENSE.
