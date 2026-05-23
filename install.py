@@ -26,13 +26,6 @@ import subprocess
 import sys
 import urllib.request
 
-# Force UTF-8 output (handles Windows cp1252 box-drawing chars)
-if sys.stdout is not None and hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
-    try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    except (ValueError, TypeError, AttributeError):
-        pass
-
 REPO_URL = "https://github.com/farhanic017/vision-tool.git"
 REPO_NAME = "vision-tool"
 
@@ -264,6 +257,14 @@ def step_watchdog(target_dir, auto=False):
 
 
 def main():
+    # Force UTF-8 output (handles Windows cp1252 box-drawing chars)
+    if sys.stdout is not None and hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
+        try:
+            _OLD_STDOUT = sys.stdout
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        except (ValueError, TypeError, AttributeError):
+            pass
+
     parser = argparse.ArgumentParser(description="Install vision-tool")
     parser.add_argument("--auto", action="store_true", help="Non-interactive mode")
     parser.add_argument("--repo", default=REPO_URL, help="Repository URL to clone")

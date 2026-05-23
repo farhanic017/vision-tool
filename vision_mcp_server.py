@@ -115,9 +115,6 @@ def send(msg):
     sys.stdout.flush()
 
 
-def main():
-    buf = ""
-
 def process_message(msg):
     """Handle a single JSON-RPC message and return a response, or None for notifications."""
     msg_id = msg.get("id")

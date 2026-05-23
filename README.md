@@ -227,7 +227,7 @@ Add it to your startup folder (`shell:startup`) so it runs at every boot:
 
 ```cmd
 :: Copy shortcut to Startup folder
-powershell -Command "$wshell = New-Object -ComObject WScript.Shell; $shortcut = $wshell.CreateShortcut((Join-Path $wshell.SpecialFolders('Startup') 'opencode-vision.lnk')); $shortcut.TargetPath = 'wscript.exe'; $shortcut.Arguments = '//nologo \"C:\path\to\vision_watchdog.vbs\"'; $shortcut.WindowStyle = 7; $shortcut.Save()"
+powershell -Command "$wshell = New-Object -ComObject WScript.Shell; $shortcut = $wshell.CreateShortcut((Join-Path $wshell.SpecialFolders('Startup') 'vision-tool.lnk')); $shortcut.TargetPath = 'wscript.exe'; $shortcut.Arguments = '//nologo \"C:\path\to\vision_watchdog.vbs\"'; $shortcut.WindowStyle = 7; $shortcut.Save()"
 ```
 
 #### Zero-flash option (no wscript icon)

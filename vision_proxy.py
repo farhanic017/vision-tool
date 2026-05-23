@@ -47,14 +47,20 @@ import tempfile
 import shutil
 
 # ── Output: force UTF-8 (safe wrap, handles piped/closed streams) ──────
+_OLD_STDOUT_WRAPPER = None
+_OLD_STDERR_WRAPPER = None
 if sys.stdout is not None and hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
     try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        _OLD_STDOUT_WRAPPER = sys.stdout
+        _BASE_BUF = _OLD_STDOUT_WRAPPER.detach()  # detach so GC won't close buffer
+        sys.stdout = io.TextIOWrapper(_BASE_BUF, encoding="utf-8", errors="replace")
     except (ValueError, TypeError, AttributeError):
         pass
 if sys.stderr is not None and hasattr(sys.stderr, 'buffer') and sys.stderr.buffer is not None:
     try:
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+        _OLD_STDERR_WRAPPER = sys.stderr
+        _BASE_BUF_ERR = _OLD_STDERR_WRAPPER.detach()
+        sys.stderr = io.TextIOWrapper(_BASE_BUF_ERR, encoding="utf-8", errors="replace")
     except (ValueError, TypeError, AttributeError):
         pass
 
@@ -71,22 +77,21 @@ def load_config():
         try:
             with open(CONFIG_PATH, "r") as f:
                 cfg = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            cfg = None
+        if isinstance(cfg, dict):
             for k in keys:
                 if not keys[k]:
                     keys[k] = cfg.get(k)
-        except (json.JSONDecodeError, IOError):
-            pass
     present = [k for k, v in keys.items() if v]
     if not present:
-        print(
-            "[ERROR] No API keys configured.\n"
+        raise RuntimeError(
+            "No API keys configured.\n"
             "  Run setup.py to configure:  python setup.py\n"
             "  Or set environment variables:\n"
             "    $env:GEMINI_API_KEY='your-key'\n"
-            "    $env:OPENROUTER_API_KEY='your-key'",
-            file=sys.stderr,
+            "    $env:OPENROUTER_API_KEY='your-key'"
         )
-        sys.exit(1)
     return keys
 
 
@@ -122,6 +127,7 @@ def is_image(path):
 def resize_image(path, max_dim=1024):
     try:
         from PIL import Image
+        from PIL import UnidentifiedImageError
 
         img = Image.open(path)
         w, h = img.size
@@ -139,6 +145,9 @@ def resize_image(path, max_dim=1024):
         img.save(buf, format=fmt)
         return buf.getvalue(), get_mime(path)
     except ImportError:
+        with open(path, "rb") as f:
+            return f.read(), get_mime(path)
+    except (UnidentifiedImageError,):
         with open(path, "rb") as f:
             return f.read(), get_mime(path)
 
@@ -173,6 +182,9 @@ def extract_video_frames(path, max_frames=8):
                 result.append((buf.getvalue(), "image/jpeg"))
             return result
         except ImportError:
+            with open(path, "rb") as f:
+                return [(f.read(), "image/gif")]
+        except Exception:
             with open(path, "rb") as f:
                 return [(f.read(), "image/gif")]
 

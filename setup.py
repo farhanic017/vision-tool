@@ -25,13 +25,6 @@ import urllib.error
 import getpass
 import subprocess
 
-# Force UTF-8 output (handles Windows cp1252 box-drawing chars)
-if sys.stdout is not None and hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
-    try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    except (ValueError, TypeError, AttributeError):
-        pass
-
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -60,7 +53,7 @@ def dim(text):
 def prompt(label, default="", secret=False):
     d = f" [{default}]" if default and not secret else ""
     while True:
-        if secret:
+        if secret and sys.stdin.isatty():
             val = getpass.getpass(f"  {label}{d}: ").strip()
         else:
             val = input(f"  {label}{d}: ").strip()
@@ -131,7 +124,9 @@ def show_keys():
     if os.path.isfile(CONFIG_PATH):
         try:
             with open(CONFIG_PATH) as f:
-                existing = json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict):
+                existing = data
         except (json.JSONDecodeError, IOError):
             pass
     gem = existing.get("GEMINI_API_KEY", "")
@@ -149,7 +144,9 @@ def enter_keys():
     if os.path.isfile(CONFIG_PATH):
         try:
             with open(CONFIG_PATH) as f:
-                existing = json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict):
+                existing = data
             print(yellow("  Existing config found — press Enter to keep current values."))
             print()
         except (json.JSONDecodeError, IOError):
@@ -245,7 +242,9 @@ def setup_later():
     if os.path.isfile(CONFIG_PATH):
         try:
             with open(CONFIG_PATH) as f:
-                existing = json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict):
+                existing = data
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -275,6 +274,13 @@ def setup_later():
 
 
 def main():
+    # Force UTF-8 output (handles Windows cp1252 box-drawing chars)
+    if sys.stdout is not None and hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
+        try:
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        except (ValueError, TypeError, AttributeError):
+            pass
+
     add_key_mode = "--add-key" in sys.argv
 
     if add_key_mode:
