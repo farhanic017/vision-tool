@@ -53,10 +53,25 @@ def dim(text):
 def prompt(label, default="", secret=False, optional=False):
     d = f" [{default}]" if default and not secret else ""
     while True:
-        if secret and sys.stdin.isatty():
-            val = getpass.getpass(f"  {label}{d}: ").strip()
+        if secret:
+            if sys.stdin.isatty():
+                try:
+                    val = getpass.getpass(f"  {label}{d}: ").strip()
+                except Exception:
+                    # getpass can fail on some Windows terminals
+                    # fall back to input (shows chars but works)
+                    val = input(f"  {label}{d}: ").strip()
+            else:
+                # Non-tty stdin (e.g. piped input)
+                try:
+                    val = input(f"  {label}{d}: ").strip()
+                except EOFError:
+                    val = ""
         else:
-            val = input(f"  {label}{d}: ").strip()
+            try:
+                val = input(f"  {label}{d}: ").strip()
+            except EOFError:
+                val = ""
         if not val:
             val = default
         if val:
@@ -76,19 +91,36 @@ def confirm(label, default=True):
 
 def securesave(config):
     """Save config with restricted file permissions."""
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+    # Write atomically: write to temp then rename
+    tmp_path = CONFIG_PATH + ".tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(config, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, CONFIG_PATH)
+    except Exception:
+        # Fallback: direct write
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=2)
+
+    # Lock permissions (best-effort)
     if os.name == "nt":
         try:
             user = os.environ.get("USERNAME", "")
-            subprocess.run(
+            r = subprocess.run(
                 f'icacls "{CONFIG_PATH}" /grant "{user}:(F)" /inheritance:e',
                 shell=True, capture_output=True, timeout=10,
             )
+            if r.returncode != 0:
+                pass  # permission lock is best-effort
         except Exception:
             pass
     else:
-        os.chmod(CONFIG_PATH, 0o600)
+        try:
+            os.chmod(CONFIG_PATH, 0o600)
+        except Exception:
+            pass
 
 
 def test_gemini(key):
@@ -249,12 +281,29 @@ def enter_keys():
     }
     securesave(config)
 
+    # Verify save succeeded
+    verified = False
+    if os.path.isfile(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH) as f:
+                saved = json.load(f)
+            saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY") if saved.get(k, "")]
+            verified = len(saved_keys) > 0
+            if verified:
+                print(f"  {green('✔')} Keys verified: {', '.join(saved_keys)}")
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"  {yellow('⚠')} Save verification failed: {e}")
+
     print()
-    print(green(f"  Saved to {CONFIG_PATH} (permissions locked to you only)"))
-    print()
-    print(bold("  You are all set!"))
-    print()
-    print('  Tell your AI: "analyse this image" or "look at this video"')
+    if verified:
+        print(green(f"  Saved to {CONFIG_PATH} (permissions locked to you only)"))
+        print()
+        print(bold("  You are all set!"))
+        print()
+        print('  Tell your AI: "analyse this image" or "look at this video"')
+    else:
+        print(yellow(f"  Wrote to {CONFIG_PATH} but verification failed."))
+        print(yellow("  Try running: python setup.py --add-key"))
     print()
 
 

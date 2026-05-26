@@ -106,11 +106,35 @@ def step_deps(target_dir):
 
 
 def step_setup(target_dir):
-    """Run setup.py for API keys."""
+    """Prompt for API keys inline (no subprocess, no new terminal)."""
+    import importlib.util
     setup_path = os.path.join(target_dir, "setup.py")
     if os.path.isfile(setup_path):
         print(f"  Running setup wizard...")
-        subprocess.run([sys.executable, setup_path], cwd=target_dir)
+        # Import setup.py in-process so it uses the SAME terminal
+        # (subprocess would open a new window on Windows)
+        spec = importlib.util.spec_from_file_location("_vision_tool_setup", setup_path)
+        mod = importlib.util.module_from_spec(spec)
+        # Add target_dir to path so setup.py can find its siblings if needed
+        sys.path.insert(0, target_dir)
+        spec.loader.exec_module(mod)
+        sys.path.pop(0)
+        mod.enter_keys()
+        # Verify save worked
+        config_path = os.path.join(target_dir, "config.json")
+        if os.path.isfile(config_path):
+            try:
+                with open(config_path) as f:
+                    cfg = json.load(f)
+                has_keys = any(cfg.get(k, "") for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"))
+                if has_keys:
+                    print(f"  {green('✔')} API keys saved and verified")
+                else:
+                    print(f"  {yellow('⚠')} Config file exists but no keys found")
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"  {yellow('⚠')} Could not verify keys: {e}")
+        else:
+            print(f"  {yellow('⚠')} Config file not found after setup")
 
 
 def detect_client():
