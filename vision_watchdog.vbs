@@ -1,11 +1,14 @@
-' vision_watchdog.vbs — Invisible background process manager for vision-tool.
+' vision_watchdog.vbs — Always-on background process manager for vision-tool.
 ' Copyright (C) 2026 Farhan Dhrubo
 '
 ' Licensed under GPLv3 — see LICENSE.
 '
-' Monitors for opencode.exe via WMI every 10 seconds.
-' When opencode runs → launches child process (hidden, no window).
-' When opencode exits → kills child process, cleans up PID file.
+' Monitors for ANY AI coding assistant process via WMI every 10 seconds.
+' When a supported tool runs -> launches vision MCP server (hidden, no window).
+' When all tools exit -> kills child process, cleans up PID file.
+'
+' Supported tools: opencode.exe, claude.exe, cursor.exe, windsurf.exe,
+'                  aider.exe, continue.exe
 '
 ' Usage:
 '   wscript.exe //nologo vision_watchdog.vbs
@@ -19,9 +22,20 @@ Dim args, childCmd, pidFileName, shell, fso, wmi, pidFilePath
 
 Set shell = CreateObject("WScript.Shell")
 Set fso   = CreateObject("Scripting.FileSystemObject")
-Set wmi   = GetObject("winmgmts:\\.\root\cimv2")
+Set wmi   = GetObject("winmgmts:\.\root\cimv2")
 
-' ── Parse arguments ───────────────────────────────────────────────
+' -- AI tool processes to watch -----------------------------------------
+Dim AI_TOOLS
+AI_TOOLS = Array( _
+    "opencode.exe", _
+    "claude.exe", _
+    "cursor.exe", _
+    "windsurf.exe", _
+    "aider.exe", _
+    "continue.exe" _
+)
+
+' -- Parse arguments ----------------------------------------------------
 Set args = WScript.Arguments
 
 ' Default: run vision_mcp_server.py (assumes next to this script)
@@ -36,16 +50,29 @@ If args.Count > 1 Then pidFileName = args(1)
 
 pidFilePath = shell.ExpandEnvironmentStrings("%TEMP%") & "\" & pidFileName
 
-' ── Main loop ─────────────────────────────────────────────────────
-Do While True
-    Dim processes, opencodeRunning
-    Set processes = wmi.ExecQuery("SELECT * FROM Win32_Process WHERE Name='opencode.exe'")
-    opencodeRunning = (processes.Count > 0)
+' -- Helper: check if any AI tool process is running --------------------
+Function IsAnyAiToolRunning()
+    Dim proc, anyRunning
+    anyRunning = False
+    For Each tool In AI_TOOLS
+        Set proc = wmi.ExecQuery("SELECT * FROM Win32_Process WHERE Name='" & tool & "'")
+        If proc.Count > 0 Then
+            anyRunning = True
+            Exit For
+        End If
+    Next
+    IsAnyAiToolRunning = anyRunning
+End Function
 
-    If opencodeRunning Then
+' -- Main loop ----------------------------------------------------------
+Do While True
+    Dim anyRunning
+    anyRunning = IsAnyAiToolRunning()
+
+    If anyRunning Then
         ' Start child if not already running
         If Not fso.FileExists(pidFilePath) Then
-            Dim pidFileOut, procEnv
+            Dim pidFileOut
             ' Launch hidden (window style 0 = invisible)
             Dim procId
             procId = shell.Run(childCmd, 0, False)
@@ -66,8 +93,8 @@ Do While True
             On Error Resume Next
             Dim proc
             Set proc = wmi.Get("Win32_Process.Handle='" & pid & "'")
-            If Not Err.Number = 0 Then
-                ' PID might be stale — find any python running our script
+            If Err.Number <> 0 Then
+                ' PID might be stale - find any python running our script
                 Dim procs
                 Set procs = wmi.ExecQuery("SELECT * FROM Win32_Process WHERE Name='python.exe' AND CommandLine LIKE '%vision_mcp_server%'")
                 For Each p In procs
@@ -78,7 +105,9 @@ Do While True
             End If
             On Error Goto 0
 
+            On Error Resume Next
             fso.DeleteFile pidFilePath, True
+            On Error Goto 0
         End If
     End If
 

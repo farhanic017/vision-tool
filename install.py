@@ -13,8 +13,10 @@ What it does:
   1. Clones the repo (if not already local)
   2. Installs pip dependencies (pillow)
   3. Detects your AI client and auto-configures MCP server
-  4. Offers to install invisible watchdog (Windows only)
-  5. Prompts to configure API keys (enter now or add later)
+  4. Configures vision-tool as ALWAYS-ON (permanent system instruction,
+     not just a triggered skill — the model will never say "I can't view images")
+  5. Offers to install invisible watchdog (Windows only)
+  6. Prompts to configure API keys (enter now or add later)
 """
 
 import argparse
@@ -214,16 +216,41 @@ def step_configure(target_dir, auto=False):
                 print(f"  {green('✔')} Added as opencode skill")
 
             if name == "opencode":
-                # Also check old/instrutions if they have instructions.md
+                # ── Add ALWAYS_ON.md as permanent system instruction ──
+                # This is the KEY change: the model gets told in EVERY session
+                # to use vision-tool for all images, so it never says "can't view".
                 instr_key = "instructions"
                 if instr_key not in config:
                     config[instr_key] = []
+                always_on_path = os.path.join(target_dir, "ALWAYS_ON.md")
+                if always_on_path not in config[instr_key]:
+                    config[instr_key].append(always_on_path)
+                with open(config_path, "w") as f:
+                    json.dump(config, f, indent=2)
+                print(f"  {green('✔')} Added ALWAYS_ON.md as permanent system instruction")
+
+                # ── Add SKILL.md as secondary instruction ──
                 skill_instr = os.path.join(target_dir, "SKILL.md")
                 if skill_instr not in config[instr_key]:
                     config[instr_key].append(skill_instr)
                 with open(config_path, "w") as f:
                     json.dump(config, f, indent=2)
                 print(f"  {green('✔')} Added SKILL.md to instructions")
+
+                # ── Configure dynamic-skill-loader for always-on ──
+                # If the user has dynamic-skill-loader installed, mark
+                # vision-tool as always-loaded so it's never filtered by triggers.
+                dsl_key = "agent-skills"
+                if dsl_key in config:
+                    if "alwaysOn" not in config[dsl_key]:
+                        config[dsl_key]["alwaysOn"] = {}
+                    config[dsl_key]["alwaysOn"]["vision-tool"] = {
+                        "name": "vision-tool",
+                        "path": target_dir,
+                    }
+                    with open(config_path, "w") as f:
+                        json.dump(config, f, indent=2)
+                    print(f"  {green('✔')} Configured vision-tool as always-on for dynamic-skill-loader")
 
 
 def step_watchdog(target_dir, auto=False):
@@ -324,10 +351,10 @@ def main():
     print()
     print(f"  Installed at: {target_dir}")
     print()
-    print("  Quick test:")
-    print(f"    {sys.executable} \"{os.path.join(target_dir, 'vision_proxy.py')}\" <image_path>")
+    print("  vision-tool is now ALWAYS-ON — your AI will never say 'I can't view images'.")
     print()
-    print("  Tell your AI:  \"analyse this image\" or \"look at this video\"")
+    print("  Manual test:")
+    print(f"    {sys.executable} \"{os.path.join(target_dir, 'vision_proxy.py')}\" <image_path>")
     print()
     if not args.auto:
         config_path = os.path.join(target_dir, "config.json")

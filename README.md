@@ -2,11 +2,37 @@
 
 > Created by [Farhan Dhrubo](https://github.com/farhanic017) — [Submit an issue](https://github.com/farhanic017/vision-tool/issues)
 
-**Image & video analysis for AI coding assistants that don't have eyes.**
+**Image & video analysis for AI coding assistants — always-on, always available.**
 
 vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
 images and videos by routing them through 12 external vision backends.
+
+## 🔄 Always-on mode
+
+vision-tool is designed to be **always-on** — not a triggered skill that
+only activates on certain keywords. Once installed:
+
+1. **`ALWAYS_ON.md`** is added to your AI client's permanent system
+   instructions. The model is told in every session: "You MUST use
+   vision-tool for ALL images and videos. Never say you can't view images."
+
+2. **The MCP server** (`vision_mcp_server.py`) exposes `analyze_image` and
+   `analyze_video` as first-class tools available at all times.
+
+3. **The invisible watchdog** (`vision_watchdog.vbs`) monitors for ALL
+   supported AI tools (opencode, Claude, Cursor, Windsurf, Aider, Continue)
+   and starts/stops the vision server automatically — no manual steps.
+
+4. **The dynamic-skill-loader** integration marks vision-tool as
+   `alwaysOn`, so it's never filtered by keyword triggers.
+
+### What this means for users
+
+- Your AI will **never say** "I can't view images" or "please describe
+  what you see" — it will just analyze the file.
+- No need to remember trigger keywords — just provide the file path.
+- Works across all major AI coding assistants.
 
 ## Features
 
@@ -27,8 +53,9 @@ https://github.com/farhanic017/vision-tool
 ```
 
 Your AI will clone, install deps, set up API keys, and configure everything
-automatically. The `SKILL.md` file contains step-by-step instructions that
-any AI agent reads and follows.
+automatically as **always-on** — the model will never say "I can't view
+images" again. The `SKILL.md` and `ALWAYS_ON.md` files contain the
+step-by-step instructions any AI agent reads and follows.
 
 ### Manual install
 
@@ -140,9 +167,16 @@ Add the MCP server to your client's config. This exposes `analyze_image` and
       "command": ["python", "path/to/vision_mcp_server.py"],
       "enabled": true
     }
-  }
+  },
+  "instructions": [
+    "path/to/ALWAYS_ON.md"   // <-- ensures model never says "can't view"
+  ]
 }
 ```
+
+For **always-on behavior**, add `ALWAYS_ON.md` to your `instructions` array.
+This injects the mandatory vision-tool usage rules into every session so
+the model automatically analyzes any image or video without being asked to.
 
 #### Claude Desktop (`claude_desktop_config.json`)
 
@@ -170,12 +204,15 @@ Command: python path/to/vision_mcp_server.py
 Once added, your AI can call `analyze_image` or `analyze_video` with any
 file path — no shell commands needed.
 
-### 3. OpenCode skill
+### 3. OpenCode skill (always-on)
 
-Add to your `opencode.jsonc` under `skills.paths`:
+Add to your `opencode.jsonc`:
 
 ```jsonc
 {
+  "instructions": [
+    "path/to/ALWAYS_ON.md"    // permanent system instruction
+  ],
   "skills": {
     "paths": [
       "path/to/vision-tool"
@@ -184,11 +221,12 @@ Add to your `opencode.jsonc` under `skills.paths`:
 }
 ```
 
-Now when you ask your AI to "look at this image" or "analyse this video",
-the skill activates automatically and the AI knows to use `vision_proxy.py`.
+The `ALWAYS_ON.md` file tells the model in every session: use vision-tool
+for all images, never say you can't view them. This is what makes it
+**always-on** rather than trigger-dependent.
 
-> **Tip**: Combine with the [skill-dispatcher](https://github.com/farhanic017/dynamic-skill-loader-for-opencode)
-> for on-demand loading.
+For **dynamic-skill-loader** users, vision-tool is also configured as
+`alwaysOn` so it loads on every session regardless of trigger keywords.
 
 ### 4. Local models (Ollama, LM Studio, llama.cpp)
 
@@ -215,8 +253,11 @@ Works identically with any local model in any MCP client:
 ### 5. Invisible background watchdog (Windows)
 
 For a zero-setup experience, the watchdog auto-starts the vision MCP server
-whenever `opencode.exe` runs and kills it when opencode exits — all hidden,
-no windows, no taskbar icons.
+whenever **any** supported AI coding tool runs and kills it when all tools
+exit — all hidden, no windows, no taskbar icons.
+
+**Monitored tools:** opencode.exe, claude.exe, cursor.exe, windsurf.exe,
+aider.exe, continue.exe
 
 **How it works:**
 
@@ -227,7 +268,7 @@ Windows starts
 vision_watchdog.vbs launches (invisible via wscript.exe)
   │
   ▼
-Every 10s polls WMI: "Is opencode.exe running?"
+Every 10s polls WMI: "Is any AI coding tool running?"
   │
   ├── Yes → Launch vision_mcp_server.py as hidden process
   │         (writes PID to %TEMP%\vision_watchdog.pid)
@@ -355,7 +396,8 @@ User: "What's in this image?"
 ```
 vision-tool/
 ├── README.md                 # This file
-├── SKILL.md                  # opencode skill definition (AI reads this to install)
+├── SKILL.md                  # opencode skill def. + always-on rules (AI reads to install)
+├── ALWAYS_ON.md              # Permanent system instruction: never say "can't view"
 ├── install.py                # Auto-installer (one command setup)
 ├── vision_proxy.py           # Core analysis engine (CLI + Python API)
 ├── vision_mcp_server.py      # MCP server (stdio + HTTP modes)

@@ -1,5 +1,5 @@
 /*
- * vision_watchdog.cs — Zero-flash invisible process manager for vision-tool.
+ * vision_watchdog.cs — Always-on zero-flash process manager for vision-tool.
  * Copyright (C) 2026 Farhan Dhrubo
  *
  * Licensed under GPLv3 — see LICENSE.
@@ -9,6 +9,7 @@
  *
  * Runs hidden (no console, no window, no taskbar icon).
  * Same logic as vision_watchdog.vbs — WMI polling, PID file management.
+ * Monitors ALL AI coding tools, not just opencode.
  *
  * Usage:
  *   vision_watchdog.exe
@@ -24,6 +25,16 @@ using System.Threading;
 
 class VisionWatchdog
 {
+    static readonly string[] AI_TOOLS = new string[]
+    {
+        "opencode.exe",
+        "claude.exe",
+        "cursor.exe",
+        "windsurf.exe",
+        "aider.exe",
+        "continue.exe"
+    };
+
     static void Main(string[] args)
     {
         string scriptDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
@@ -35,18 +46,27 @@ class VisionWatchdog
 
         while (true)
         {
-            bool opencodeRunning = false;
-            try
-            {
-                using (var searcher = new ManagementObjectSearcher(
-                    "SELECT * FROM Win32_Process WHERE Name='opencode.exe'"))
-                {
-                    opencodeRunning = searcher.Get().Count > 0;
-                }
-            }
-            catch { }
+            bool anyToolRunning = false;
 
-            if (opencodeRunning)
+            // Check all AI tools
+            foreach (string tool in AI_TOOLS)
+            {
+                try
+                {
+                    using (var searcher = new ManagementObjectSearcher(
+                        $"SELECT * FROM Win32_Process WHERE Name='{tool}'"))
+                    {
+                        if (searcher.Get().Count > 0)
+                        {
+                            anyToolRunning = true;
+                            break;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            if (anyToolRunning)
             {
                 if (!File.Exists(pidFilePath))
                 {
