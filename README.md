@@ -8,6 +8,15 @@ vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
 images and videos by routing them through 12 external vision backends.
 
+## Features
+
+- **Images** — PNG, JPG, WebP, BMP, animated GIF
+- **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
+- **12 fallback backends** — 6 free models first, then 6 paid models for reliability
+- **Zero hardcoded secrets** — API keys in `config.json` (gitignored) or env vars
+- **Works everywhere** — CLI, MCP server, opencode skill, or direct Python import
+
+
 ## 🔄 Always-on mode
 
 vision-tool is designed to be **always-on** — not a triggered skill that
@@ -34,14 +43,6 @@ only activates on certain keywords. Once installed:
   what you see" — it will just analyze the file.
 - No need to remember trigger keywords — just provide the file path.
 - Works across all major AI coding assistants.
-
-## Features
-
-- **Images** — PNG, JPG, WebP, BMP, animated GIF
-- **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
-- **12 fallback backends** — 6 free models first, then 6 paid models for reliability
-- **Zero hardcoded secrets** — API keys in `config.json` (gitignored) or env vars
-- **Works everywhere** — CLI, MCP server, opencode skill, or direct Python import
 
 ## Quick start
 
