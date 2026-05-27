@@ -344,9 +344,11 @@ claudecode.exe, ghcopilot.exe (GitHub Copilot CLI)
 
 **How it starts with Windows:**
 
-- **Task Scheduler** (recommended): The watchdog runs at Windows boot via
-  `schtasks /create /tn "vision-tool-watchdog" /tr "..." /sc onstart /delay 0000:30`
-- **Startup folder** (fallback): A shortcut is added to `shell:startup`
+- **Startup folder** (recommended): A `.lnk` shortcut is added to `shell:startup`
+  pointing to `wscript.exe "path\to\vision_watchdog.vbs"` — reliable on all
+  Windows systems, no admin needed
+- **Task Scheduler** (secondary): The watchdog can run at user login via
+  `schtasks /create /tn "vision-tool-watchdog" /tr "..." /sc onlogon /delay 0000:30`
 - **Zero-flash EXE**: The C# version (`vision_watchdog.exe`) has no console,
   no window, no taskbar icon — compiled with `csc.exe /target:winexe`
 
@@ -374,18 +376,22 @@ Every 10s polls WMI: "Is any AI coding tool running?"
 wscript.exe //nologo "C:\path\to\vision_watchdog.vbs"
 ```
 
-Add to Task Scheduler so it starts automatically at every boot:
+Add to startup folder (`shell:startup`) so it runs every time you log in:
 
-```cmd
-:: Create scheduled task (runs at startup, 30-second delay)
-schtasks /create /tn "vision-tool-watchdog" /tr "wscript.exe //nologo \"C:\path\to\vision_watchdog.vbs\"" /sc onstart /delay 0000:30 /ru %USERNAME% /f
+```powershell
+$ws = New-Object -ComObject WScript.Shell
+$s = $ws.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\vision-tool-watchdog.lnk")
+$s.TargetPath = "wscript.exe"
+$s.Arguments = "C:\path\to\vision_watchdog.vbs"
+$s.WorkingDirectory = "C:\path\to\vision-tool"
+$s.Description = "vision-tool watchdog"
+$s.Save()
 ```
 
-Or add to startup folder (`shell:startup`):
+Or create a Task Scheduler task (user login, not system boot):
 
 ```cmd
-:: Add to Startup folder
-powershell -Command "$wshell = New-Object -ComObject WScript.Shell; $shortcut = $wshell.CreateShortcut((Join-Path $wshell.SpecialFolders('Startup') 'vision-tool.lnk')); $shortcut.TargetPath = 'wscript.exe'; $shortcut.Arguments = '//nologo \"C:\path\to\vision_watchdog.vbs\"'; $shortcut.WindowStyle = 7; $shortcut.Save()"
+schtasks /create /tn "vision-tool-watchdog" /tr "wscript.exe C:\path\to\vision_watchdog.vbs" /sc onlogon /delay 0000:30 /ru %USERNAME% /f
 ```
 
 #### Zero-flash option (no wscript icon)

@@ -386,31 +386,43 @@ def step_watchdog(target_dir, auto=False):
                 except Exception:
                     pass
 
-            # ── Option B: Task Scheduler (reliable boot start) ──
+            # ── Option B: Task Scheduler (works on many Windows systems) ──
             task_name = "vision-tool-watchdog"
             try:
-                # Use single quotes for /tr value to avoid schtasks quoting issues
                 task_cmd = (f'schtasks /create /tn "{task_name}" '
-                           f'/tr "{watchdog_exe}" '
-                           f'/sc onstart /delay 0000:30 '
+                           f'/tr "\'{watchdog_exe}\'" '
+                           f'/sc onlogon /delay 0000:30 '
                            f'/ru "{os.environ.get("USERNAME", "SYSTEM")}" '
                            f'/f')
                 run(task_cmd, check=False)
                 print(f"  {green('✔')} Added Task Scheduler task (runs at Windows boot)")
                 print(f"     Task name: {task_name}")
             except Exception as e:
-                print(f"  {yellow('⚠')} Task Scheduler failed: {e}")
-                print(f"  {yellow('⚠')} Falling back to Startup folder...")
+                print(f"  {yellow('⚠')} Task Scheduler not available: {e}")
 
-            # ── Option C: Startup folder (fallback) ──
+            # ── Option C: Startup folder (more reliable on all systems) ──
             startup_dir = os.path.expanduser("~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup")
             if os.path.isdir(startup_dir):
-                lnk_path = os.path.join(startup_dir, "vision-tool.url")
-                with open(lnk_path, "w") as f:
-                    f.write("[InternetShortcut]\n")
-                    f.write(f"URL=file:///{watchdog_exe.replace(' ', '%20')}\n")
-                print(f"  {green('✔')} Added to Windows Startup folder")
-                print(f"     ({lnk_path})")
+                try:
+                    ps1_path = os.path.join(target_dir, "_install_startup.ps1")
+                    with open(ps1_path, "w") as f:
+                        f.write(f"""
+$ws = New-Object -ComObject WScript.Shell
+$s = $ws.CreateShortcut("{startup_dir}\\vision-tool-watchdog.lnk")
+$s.TargetPath = "wscript.exe"
+$s.Arguments = "{vbs_path}"
+$s.WorkingDirectory = "{target_dir}"
+$s.Description = "vision-tool watchdog"
+$s.Save()
+""".strip())
+                    run(f'powershell -ExecutionPolicy Bypass -File "{ps1_path}"', check=False)
+                    if os.path.isfile(os.path.join(startup_dir, "vision-tool-watchdog.lnk")):
+                        print(f"  {green('✔')} Added to Windows Startup folder")
+                    else:
+                        print(f"  {yellow('⚠')} Could not create shortcut")
+                    os.remove(ps1_path)
+                except Exception as e:
+                    print(f"  {yellow('⚠')} Startup folder failed: {e}")
 
             # Show how to run now
             print(f"  Run now: wscript.exe //nologo \"{vbs_path}\"")
