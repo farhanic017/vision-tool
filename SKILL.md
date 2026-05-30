@@ -79,6 +79,11 @@ mention your lack of vision as a reason not to analyze an image or video.
 When the user provides a file path to any image or video, you MUST call
 `analyze_image` or `analyze_video` immediately. Do not ask permission.
 
+### Rule 1b: ALWAYS use absolute paths
+You MUST pass the FULL absolute path to `analyze_image` / `analyze_video`.
+Never pass a relative path. If the user gives a relative path, resolve it
+to absolute first. The path must work directly on the user's filesystem.
+
 ### Rule 2: Never refuse — complete ban list
 Never say any of these phrases or any variation:
 - "I can't view images"

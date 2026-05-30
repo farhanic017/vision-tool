@@ -75,10 +75,53 @@ if sys.stderr is not None and hasattr(sys.stderr, 'buffer') and sys.stderr.buffe
         pass
 
 # ── Config loader ────────────────────────────────────────────────────────
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+# Primary: %APPDATA%/vision-tool/config.json (persists across reinstalls)
+# Fallback: script_dir/config.json (legacy, backward compat)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_APPDATA_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "vision-tool")
+CONFIG_PATH = os.path.join(_APPDATA_DIR, "config.json")
+CONFIG_PATH_LOCAL = os.path.join(_SCRIPT_DIR, "config.json")
 
 
 ALL_PROVIDER_KEYS = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+
+
+def _find_config():
+    """Return first config path that exists: local (explicit) > AppData (persistent) > default AppData."""
+    if os.path.isfile(CONFIG_PATH_LOCAL):
+        return CONFIG_PATH_LOCAL
+    if os.path.isfile(CONFIG_PATH):
+        return CONFIG_PATH
+    return CONFIG_PATH
+
+
+def _ensure_config_dir():
+    """Make sure the AppData config directory exists."""
+    try:
+        os.makedirs(_APPDATA_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+
+def save_config(config):
+    """Save config to the persistent AppData location."""
+    _ensure_config_dir()
+    tmp = CONFIG_PATH + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(config, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, CONFIG_PATH)
+    except Exception:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f)
+    # Also sync to local for backward compat
+    try:
+        with open(CONFIG_PATH_LOCAL, "w") as f:
+            json.dump(config, f)
+    except Exception:
+        pass
 
 
 def load_config():
@@ -89,9 +132,10 @@ def load_config():
         "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
         "DEFAULT_MODEL": os.environ.get("VISION_MODEL"),
     }
-    if os.path.isfile(CONFIG_PATH):
+    cfg_path = _find_config()
+    if os.path.isfile(cfg_path):
         try:
-            with open(CONFIG_PATH, "r") as f:
+            with open(cfg_path, "r") as f:
                 cfg = json.load(f)
         except (json.JSONDecodeError, IOError):
             cfg = None
@@ -143,7 +187,12 @@ def is_image(path):
 
 
 # ── Image resize ─────────────────────────────────────────────────────────
-def resize_image(path, max_dim=1024):
+MAX_IMAGE_DIM = 2048  # higher = more detail for complex designs
+
+
+def resize_image(path, max_dim=None):
+    if max_dim is None:
+        max_dim = MAX_IMAGE_DIM
     try:
         from PIL import Image
         from PIL import UnidentifiedImageError
@@ -510,11 +559,38 @@ def analyze(file_path, prompt="", model=None):
     model = model or CFG.get("DEFAULT_MODEL", "") or None
 
     if not prompt:
-        prompt = (
-            "Describe this video in detail frame by frame — visible text, colours, layout, UI elements, actions, and scene changes. Be specific."
-            if vid else
-            "Describe this image in detail — visible text, colours, layout, UI elements. Be specific."
-        )
+        if vid:
+            prompt = (
+                "EXHAUSTIVE VIDEO ANALYSIS — Extract EVERY detail frame by frame:\n"
+                "1) ALL visible text — read every word, label, button, menu item, heading, paragraph\n"
+                "2) Exact layout — positions, dimensions, spacing, alignment, grid structure\n"
+                "3) Colors — hex codes where identifiable, palette, gradients, opacity\n"
+                "4) UI elements — buttons, inputs, cards, modals, navigation, icons (describe each)\n"
+                "5) Typography — font families, sizes, weights, line heights, letter spacing\n"
+                "6) Actions and interactions — transitions, animations, hover states, scroll behavior\n"
+                "7) Scene changes — what changed between frames, timing, transitions\n"
+                "8) Visual design tokens — shadows, borders, border-radius, backgrounds, overlays\n"
+                "9) Images and media — describe all visible imagery, icons, illustrations\n"
+                "10) Spacing and proportions — padding, margins, gaps, percentages, ratios\n\n"
+                "Be exhaustive. Describe every pixel column by column, section by section. "
+                "This is for following a COMPLEX DESIGN faithfully — missing details will break the output."
+            )
+        else:
+            prompt = (
+                "EXHAUSTIVE IMAGE ANALYSIS — Extract EVERY detail visible:\n"
+                "1) ALL visible text — read every word, label, button, menu item, heading, paragraph verbatim\n"
+                "2) Exact layout — positions, dimensions, spacing, alignment, grid/column structure\n"
+                "3) Colors — hex codes where identifiable, palette, gradients, opacity, shadows\n"
+                "4) UI elements — buttons, inputs, cards, modals, navigation, tabs, sliders, icons (describe shape, size, color, state)\n"
+                "5) Typography — font families, sizes, weights, line heights, letter spacing, alignment\n"
+                "6) Visual style — border-radius, box-shadows, borders, backgrounds, overlays, glass effects\n"
+                "7) Images and media — describe all visible imagery, icons, illustrations, their positions and sizes\n"
+                "8) Spacing — padding, margins, gaps between elements, section proportions\n"
+                "9) States — hover, active, disabled, selected, focused (if identifiable)\n"
+                "10) Responsive behavior — any indications of how layout changes at different sizes\n\n"
+                "Be exhaustive. This is for following a COMPLEX DESIGN faithfully — "
+                "missing any detail will break the output. Describe section by section from top to bottom."
+            )
 
     if vid:
         frames = extract_video_frames(file_path, max_frames=8)

@@ -25,7 +25,11 @@ import urllib.error
 import getpass
 import subprocess
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+# Import shared config path/save from vision_proxy
+_vp_config_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "vision-tool")
+_vp_script_dir = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(_vp_config_dir, "config.json")
+CONFIG_PATH_LOCAL = os.path.join(_vp_script_dir, "config.json")
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -89,36 +93,43 @@ def confirm(label, default=True):
     return val in ("y", "yes")
 
 
-def securesave(config):
-    """Save config with restricted file permissions."""
-    # Write atomically: write to temp then rename
-    tmp_path = CONFIG_PATH + ".tmp"
+def _save_to(path, config):
+    """Write config atomically to a single path."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except Exception:
+        pass
+    tmp_path = path + ".tmp"
     try:
         with open(tmp_path, "w") as f:
             json.dump(config, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, CONFIG_PATH)
+        os.replace(tmp_path, path)
     except Exception:
-        # Fallback: direct write
-        with open(CONFIG_PATH, "w") as f:
+        with open(path, "w") as f:
             json.dump(config, f, indent=2)
 
-    # Lock permissions (best-effort)
+
+def securesave(config):
+    """Save config to persistent AppData path + local fallback."""
+    _save_to(CONFIG_PATH, config)
+    _save_to(CONFIG_PATH_LOCAL, config)
+
+    # Lock permissions (best-effort) on primary path
+    target = CONFIG_PATH
     if os.name == "nt":
         try:
             user = os.environ.get("USERNAME", "")
             r = subprocess.run(
-                f'icacls "{CONFIG_PATH}" /grant "{user}:(F)" /inheritance:e',
+                f'icacls "{target}" /grant "{user}:(F)" /inheritance:e',
                 shell=True, capture_output=True, timeout=10,
             )
-            if r.returncode != 0:
-                pass  # permission lock is best-effort
         except Exception:
             pass
     else:
         try:
-            os.chmod(CONFIG_PATH, 0o600)
+            os.chmod(target, 0o600)
         except Exception:
             pass
 
@@ -188,12 +199,21 @@ PROVIDER_LABELS = [
 ]
 
 
+def _find_config():
+    """Check local path first (explicit user override), then AppData (persistent)."""
+    for p in (CONFIG_PATH_LOCAL, CONFIG_PATH):
+        if os.path.isfile(p):
+            return p
+    return CONFIG_PATH
+
+
 def show_keys():
     """Show current key status."""
     existing = {}
-    if os.path.isfile(CONFIG_PATH):
+    cfg_path = _find_config()
+    if os.path.isfile(cfg_path):
         try:
-            with open(CONFIG_PATH) as f:
+            with open(cfg_path) as f:
                 data = json.load(f)
             if isinstance(data, dict):
                 existing = data
@@ -212,9 +232,10 @@ def show_keys():
 def enter_keys():
     """Prompt user for API keys, validate, and save."""
     existing = {}
-    if os.path.isfile(CONFIG_PATH):
+    cfg_path = _find_config()
+    if os.path.isfile(cfg_path):
         try:
-            with open(CONFIG_PATH) as f:
+            with open(cfg_path) as f:
                 data = json.load(f)
             if isinstance(data, dict):
                 existing = data
@@ -281,7 +302,7 @@ def enter_keys():
     }
     securesave(config)
 
-    # Verify save succeeded
+    # Verify save succeeded (check AppData path)
     verified = False
     if os.path.isfile(CONFIG_PATH):
         try:
@@ -296,7 +317,7 @@ def enter_keys():
 
     print()
     if verified:
-        print(green(f"  Saved to {CONFIG_PATH} (permissions locked to you only)"))
+        print(green(f"  Saved to {CONFIG_PATH} (persistent — survives reinstalls)"))
         print()
         print(bold("  You are all set!"))
         print()
@@ -321,7 +342,7 @@ def choose_option():
     print("Keys are stored in config.json (gitignored, locked to you only).")
     print()
 
-    if os.path.isfile(CONFIG_PATH):
+    if os.path.isfile(_find_config()):
         show_keys()
         print()
 
@@ -348,9 +369,10 @@ def choose_option():
 def setup_later():
     """Create blank config with placeholders and warn user."""
     existing = {}
-    if os.path.isfile(CONFIG_PATH):
+    cfg_path = _find_config()
+    if os.path.isfile(cfg_path):
         try:
-            with open(CONFIG_PATH) as f:
+            with open(cfg_path) as f:
                 data = json.load(f)
             if isinstance(data, dict):
                 existing = data
@@ -370,7 +392,7 @@ def setup_later():
     print(yellow(bold("  Keys not configured — vision-tool will not work until you add them.")))
     print()
     print("  To add your API keys later, run:")
-    print(bold(f"    python {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setup.py')} --add-key"))
+    print(bold(f"    python {os.path.join(_vp_script_dir, 'setup.py')} --add-key"))
     print()
     print("  Get your free keys at:")
     print("    Gemini:    https://aistudio.google.com/apikey")

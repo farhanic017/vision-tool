@@ -1,6 +1,50 @@
 import subprocess, sys, time, json, os, io, tempfile, shutil, base64, builtins, getpass
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+# ── Run tests in a temp directory to avoid destroying user config ──
+_ORIG_DIR = os.path.dirname(os.path.abspath(__file__))
+_TMP_DIR = tempfile.mkdtemp(prefix="vision_test_")
+
+# Save real keys, clear AppData config so test subprocesses see clean slate
+_APPDATA_CFG = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'vision-tool', 'config.json')
+_SAVED_APPDATA = None
+if os.path.isfile(_APPDATA_CFG):
+    try:
+        with open(_APPDATA_CFG, 'r') as f:
+            _SAVED_APPDATA = f.read()
+        os.remove(_APPDATA_CFG)
+    except Exception:
+        pass
+
+# Copy source files except config.json (tests create their own)
+for f in os.listdir(_ORIG_DIR):
+    if f == 'config.json' or f.endswith('.pyc'):
+        continue
+    src = os.path.join(_ORIG_DIR, f)
+    dst = os.path.join(_TMP_DIR, f)
+    if os.path.isfile(src):
+        try:
+            shutil.copy2(src, dst)
+        except Exception:
+            pass
+os.chdir(_TMP_DIR)
+
+# Point module-level config constants to temp dir
+import setup as s, vision_proxy as vp
+_TMP_CFG = os.path.join(_TMP_DIR, 'config.json')
+_APPDATA_CFG_LOCAL = os.path.join(_TMP_DIR, 'appdata_config.json')
+s.CONFIG_PATH_LOCAL = _TMP_CFG
+s.CONFIG_PATH = _APPDATA_CFG_LOCAL
+if hasattr(vp, 'CONFIG_PATH'):
+    vp.CONFIG_PATH = _TMP_CFG
+if hasattr(vp, 'CONFIG_PATH_LOCAL'):
+    vp.CONFIG_PATH_LOCAL = _TMP_CFG
+# Also patch vision_mcp_server if loaded
+try:
+    import vision_mcp_server as mcp
+    if hasattr(mcp, 'CONFIG_PATH'):
+        mcp.CONFIG_PATH = _TMP_CFG
+except ImportError:
+    pass
 
 # Don't wrap stdout here — each module (vision_proxy, install.main, setup.main) wraps
 # its own stdout when needed. We just flush to ensure output is visible.
@@ -17,10 +61,6 @@ def check(name, ok, detail=''):
         FAIL += 1
         print(f'  FAIL  {name}  {detail}')
     sys.stdout.flush()
-
-def cfg_cleanup():
-    if os.path.exists('config.json'):
-        os.remove('config.json')
 
 def create_dummy_img(path, text=b'dummy'):
     """Create a dummy file (not a valid image)."""
@@ -42,8 +82,6 @@ MINI_PNG = bytes([
 # ═══════════════════════════════════════════════════════════════════
 # SETUP.PY TESTS
 # ═══════════════════════════════════════════════════════════════════
-
-cfg_cleanup()
 
 # 1. Option 2 — fresh install
 p = subprocess.Popen([sys.executable, 'setup.py'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -208,7 +246,8 @@ except Exception as e:
     check('test_openrouter: bad key no crash', False, str(e))
 
 # 16. securesave creates valid JSON
-cfg_cleanup()
+for p in ('config.json', os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'vision-tool', 'config.json')):
+    if os.path.exists(p): os.remove(p)
 s.securesave({'GEMINI_API_KEY': 'gk', 'OPENROUTER_API_KEY': 'ork'})
 check('securesave: file exists', os.path.isfile('config.json'))
 saved = json.load(open('config.json'))
@@ -216,7 +255,8 @@ check('securesave: correct Gemini', saved.get('GEMINI_API_KEY') == 'gk')
 check('securesave: correct OpenRouter', saved.get('OPENROUTER_API_KEY') == 'ork')
 
 # 17. securesave with empty keys
-cfg_cleanup()
+for p in ('config.json', os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'vision-tool', 'config.json')):
+    if os.path.exists(p): os.remove(p)
 s.securesave({'GEMINI_API_KEY': '', 'OPENROUTER_API_KEY': ''})
 check('securesave: empty keys', os.path.isfile('config.json'))
 
@@ -241,7 +281,8 @@ except Exception as e:
     check('enter_keys: uses defaults', False, str(e))
 
 # 20. setup_later with no config
-cfg_cleanup()
+for p in ('config.json', os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'vision-tool', 'config.json')):
+    if os.path.exists(p): os.remove(p)
 s.setup_later()
 check('setup_later: creates config', os.path.isfile('config.json'))
 cfg = json.load(open('config.json'))
@@ -258,7 +299,8 @@ check('setup_later: preserves Gemini', cfg.get('GEMINI_API_KEY') == 'gk')
 check('setup_later: preserves OpenRouter', cfg.get('OPENROUTER_API_KEY') == 'ork')
 
 # 22. enter_keys with no existing config (via --add-key subprocess)
-cfg_cleanup()
+for p_cfg in ('config.json', os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'vision-tool', 'config.json')):
+    if os.path.exists(p_cfg): os.remove(p_cfg)
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
@@ -575,7 +617,9 @@ check('b64: unicode str encoded', len(vp.b64('\u2603'.encode('utf-8'))) > 0)
 
 # 48. load_config — no config file
 backup_path = vp.CONFIG_PATH
-vp.CONFIG_PATH = os.path.join(sdir, '_nonexistent_cfg_xxx.json')
+backup_path_local = vp.CONFIG_PATH_LOCAL
+vp.CONFIG_PATH = '_nonexistent_cfg_xxx.json'
+vp.CONFIG_PATH_LOCAL = '_nonexistent_cfg_xxx.json'
 try:
     vp.load_config()
     check('load_config: no file no env', False)
@@ -583,7 +627,8 @@ except RuntimeError:
     check('load_config: no file no env', True)
 
 # 49. load_config — blank keys
-vp.CONFIG_PATH = os.path.join(sdir, 'config.json')
+vp.CONFIG_PATH = 'config.json'
+vp.CONFIG_PATH_LOCAL = 'config.json'
 json.dump({'GEMINI_API_KEY': '', 'OPENROUTER_API_KEY': ''}, open('config.json', 'w'))
 try:
     vp.load_config()
@@ -592,7 +637,8 @@ except RuntimeError:
     check('load_config: blank keys', True)
 
 # 50. load_config — env var only (no config file)
-vp.CONFIG_PATH = os.path.join(sdir, '_nonexistent_cfg_xxx.json')
+vp.CONFIG_PATH = '_nonexistent_cfg_xxx.json'
+vp.CONFIG_PATH_LOCAL = '_nonexistent_cfg_xxx.json'
 os.environ['GEMINI_API_KEY'] = 'env_gk'
 try:
     k = vp.load_config()
@@ -603,7 +649,7 @@ except SystemExit:
 del os.environ['GEMINI_API_KEY']
 
 # 51. load_config — both env and file (env takes priority)
-vp.CONFIG_PATH = os.path.join(sdir, 'config.json')
+vp.CONFIG_PATH = 'config.json'
 json.dump({'GEMINI_API_KEY': 'file_gk', 'OPENROUTER_API_KEY': 'file_ork'}, open('config.json', 'w'))
 os.environ['GEMINI_API_KEY'] = 'env_gk'
 try:
@@ -658,6 +704,10 @@ try:
 except Exception as e:
     check('load_config: DEFAULT_MODEL empty', False, str(e))
 
+# Restore config paths
+vp.CONFIG_PATH = backup_path
+vp.CONFIG_PATH_LOCAL = backup_path_local
+
 # 57. analyze — nonexistent file
 try:
     vp.analyze('_nonexistent_9999.jpg')
@@ -671,7 +721,7 @@ td = tempfile.mkdtemp()
 try:
     img_path = os.path.join(td, 'test.png')
     create_dummy_img(img_path, MINI_PNG)
-    vp.CONFIG_PATH = os.path.join(sdir, 'config.json')
+    vp.CONFIG_PATH = 'config.json'
     json.dump({'GEMINI_API_KEY': 'gk', 'OPENROUTER_API_KEY': 'ork'}, open('config.json', 'w'))
     # analyze will try to call APIs and fail — catch the RuntimeError
     try:
@@ -1049,6 +1099,22 @@ for fname in files:
 # ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
+
+# Restore saved AppData config
+if _SAVED_APPDATA:
+    try:
+        d = os.path.dirname(_APPDATA_CFG)
+        if not os.path.isdir(d): os.makedirs(d, exist_ok=True)
+        with open(_APPDATA_CFG, 'w') as f:
+            f.write(_SAVED_APPDATA)
+    except Exception:
+        pass
+
+# Clean up temp directory
+try:
+    shutil.rmtree(_TMP_DIR, ignore_errors=True)
+except Exception:
+    pass
 
 print()
 print(f'  {"="*40}')

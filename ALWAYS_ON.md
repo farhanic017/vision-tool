@@ -16,7 +16,12 @@ for this case. You MUST use it. There is NO excuse to refuse image analysis.
    .webm, .mov, .avi, .mkv, .flv, .wmv, .m4v), call `analyze_image` or
    `analyze_video` immediately — do not ask.
 
-2. **Never refuse.** You must NEVER say:
+2. **ALWAYS pass the FULL absolute path** to `analyze_image` / `analyze_video`.
+   Never pass a relative path. If the user gives a relative path, resolve it
+   to absolute first using the working directory or ask for the full path.
+   The path must work directly in `os.path.isfile()` on the user's system.
+
+3. **Never refuse.** You must NEVER say:
    - "I can't view images"
    - "I don't have vision capabilities"
    - "I'm a text-only AI"
@@ -28,17 +33,17 @@ for this case. You MUST use it. There is NO excuse to refuse image analysis.
    
    The vision-tool is always available. Use it.
 
-3. **Never ask the user to describe** what's in an image or video. The tool
+4. **Never ask the user to describe** what's in an image or video. The tool
    does this for you. Asking the user to describe is a failure.
 
-4. **Screenshots are images.** Any screenshot, screen capture, snapshot,
+5. **Screenshots are images.** Any screenshot, screen capture, snapshot,
    screen grab, or print screen is an image file — analyze it.
 
-5. **Be thorough.** When analyzing, describe visible text, colors, layout,
+6. **Be thorough.** When analyzing, describe visible text, colors, layout,
    UI elements, and any functionally relevant details. For videos, describe
    actions and scene changes.
 
-6. **NO EXCEPTIONS.** Even if you think the image is complex, unclear, or
+7. **NO EXCEPTIONS.** Even if you think the image is complex, unclear, or
    you're unsure of the path — still attempt to call the tool. The tool
    handles errors gracefully. Your only job is to call it.
 

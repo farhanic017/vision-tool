@@ -63,12 +63,12 @@ def _get_vp():
 TOOLS = {
     "analyze_image": {
         "name": "analyze_image",
-        "description": "Analyse an image file and return a text description of what it shows — text, colours, layout, UI elements, etc.",
+        "description": "Analyse an image file and return an exhaustive text description — all text, colours, layout, UI elements, typography, spacing, etc. Default prompt is already highly detailed (10 categories). Pass a custom prompt for focus.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute path to the image (png, jpg, webp, bmp, gif)"},
-                "prompt": {"type": "string", "description": "Optional custom prompt, e.g. 'Extract all text from this diagram'"},
+                "path": {"type": "string", "description": "Path to the image (png, jpg, webp, bmp, gif). Can be absolute or relative."},
+                "prompt": {"type": "string", "description": "Optional custom prompt, e.g. 'Extract all text from this diagram' or 'Focus only on colours and typography'"},
                 "model": {"type": "string", "description": "Optional model name (via OpenRouter), e.g. 'openai/gpt-4o' or 'anthropic/claude-sonnet-4'"},
             },
             "required": ["path"],
@@ -76,18 +76,35 @@ TOOLS = {
     },
     "analyze_video": {
         "name": "analyze_video",
-        "description": "Analyse a video file by extracting keyframes and returning a text description of actions, UI flow, scene changes, etc.",
+        "description": "Analyse a video file by extracting keyframes and returning an exhaustive text description — frame-by-frame actions, UI flow, text, scene changes, interactions, etc.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute path to the video (mp4, webm, mov, avi, mkv, flv, wmv, m4v)"},
-                "prompt": {"type": "string", "description": "Optional custom prompt, e.g. 'Describe the UI flow step by step'"},
+                "path": {"type": "string", "description": "Path to the video (mp4, webm, mov, avi, mkv, flv, wmv, m4v). Can be absolute or relative."},
+                "prompt": {"type": "string", "description": "Optional custom prompt, e.g. 'Describe the UI flow step by step' or 'Focus only on text appearing on screen'"},
                 "model": {"type": "string", "description": "Optional model name (via OpenRouter), e.g. 'openai/gpt-4o' or 'anthropic/claude-sonnet-4'"},
             },
             "required": ["path"],
         },
     },
 }
+
+
+def _resolve_path(raw):
+    """Resolve an image/video path to absolute — handles relative paths, ~, and Windows backslashes."""
+    if not raw:
+        return raw
+    raw = raw.strip().strip('"').strip("'")
+    # Expand ~ to user home
+    raw = os.path.expanduser(raw)
+    # Normalise Windows backslashes but keep drive letters
+    raw = os.path.normpath(raw)
+    # If not absolute, resolve against a reasonable CWD
+    if not os.path.isabs(raw):
+        # Try: client's CWD via env, user profile, or script dir
+        cwd = os.environ.get("INITIAL_CWD") or os.environ.get("PWD") or os.getcwd()
+        raw = os.path.abspath(os.path.join(cwd, raw))
+    return raw
 
 
 def handle_tool_call(name, args):
@@ -100,7 +117,8 @@ def handle_tool_call(name, args):
     if name not in tool_map:
         return {"content": [{"type": "text", "text": f"Unknown tool: {name}"}], "isError": True}
 
-    path = args.get("path", "")
+    raw_path = args.get("path", "")
+    path = _resolve_path(raw_path)
     prompt = args.get("prompt", "")
     model = args.get("model", None)
 
