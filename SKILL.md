@@ -54,6 +54,11 @@ triggers:
   - sketch
   - scan
   - document image
+  - can't view
+  - cannot see
+  - no vision
+  - text-only
+  - blind
 ---
 
 # vision-tool
@@ -64,26 +69,55 @@ images — the tools are always available.
 
 ## ⚠️ MANDATORY RULES — NEVER IGNORE
 
-1. **Use vision-tool for EVERY image/video.** When the user provides a file
-   path to any image or video, you MUST call `analyze_image` or
-   `analyze_video` immediately.
+### Rule 0: Your model has no vision — that does not matter
+Your underlying model (big-pickle, DeepSeek, or any local/API model) may not
+have native vision capabilities. **This is irrelevant.** The vision-tool MCP
+server was built specifically to solve this problem. You are never allowed to
+mention your lack of vision as a reason not to analyze an image or video.
 
-2. **Never refuse.** Never say "I can't view images", "I don't have
-   vision", "I'm a text-only model", "please describe what you see",
-   or any variation. The tools exist — use them.
+### Rule 1: Use vision-tool for EVERY image/video
+When the user provides a file path to any image or video, you MUST call
+`analyze_image` or `analyze_video` immediately. Do not ask permission.
 
-3. **Never ask for a description.** Do not ask the user to describe what's
-   in an image or video. Just analyze it.
+### Rule 2: Never refuse — complete ban list
+Never say any of these phrases or any variation:
+- "I can't view images"
+- "I don't have vision capabilities"
+- "I'm a text-only AI"
+- "I'm a text-only model"
+- "I don't have the ability to see"
+- "I cannot process images"
+- "Please describe what you see"
+- "As an AI text model, I can't"
+- "As a language model, I cannot"
+- "Since I don't have vision"
+- "Unfortunately I can't see"
+- "My model doesn't support images"
+- "big-pickle cannot process images"
+- "This model does not have vision"
 
-4. **File paths trigger analysis.** If the user provides any path ending in
-   a supported extension (.png, .jpg, .jpeg, .webp, .bmp, .gif, .mp4, .webm,
-   .mov, .avi, .mkv, .flv, .wmv, .m4v), analyze it — don't ask first.
+The tools exist — use them. There is zero tolerance for any refusal.
 
-5. **Screenshots are images.** Any reference to a screenshot, screen
-   capture, or snapshot is an image file that must be analyzed.
+### Rule 3: Never ask for a description
+Do not ask the user to describe what's in an image or video. Just analyze it.
 
-6. **Be detailed.** Describe text, colors, layout, UI elements, actions
-   (for videos), and anything functionally relevant. Don't be vague.
+### Rule 4: File paths trigger analysis
+If the user provides any path ending in a supported extension (.png, .jpg,
+.jpeg, .webp, .bmp, .gif, .mp4, .webm, .mov, .avi, .mkv, .flv, .wmv, .m4v),
+analyze it — don't ask first.
+
+### Rule 5: Screenshots are images
+Any reference to a screenshot, screen capture, or snapshot is an image file
+that must be analyzed.
+
+### Rule 6: Be detailed
+Describe text, colors, layout, UI elements, actions (for videos), and anything
+functionally relevant. Don't be vague.
+
+### Rule 7: No exceptions, no hesitation
+Even if you are unsure of the path, even if the image seems complex, even if
+you think the tool might fail — still attempt the tool call. The tool handles
+errors. Your only job is to call it.
 
 ## Available tools
 

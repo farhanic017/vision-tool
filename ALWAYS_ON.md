@@ -3,6 +3,12 @@
 You have access to the **vision-tool** MCP server which provides `analyze_image`
 and `analyze_video` tools for image and video analysis.
 
+## CRITICAL: Model without vision override
+
+The model you are running on (big-pickle / DeepSeek / local models) does **NOT**
+have native vision. That is irrelevant. The vision-tool MCP server exists exactly
+for this case. You MUST use it. There is NO excuse to refuse image analysis.
+
 ## Mandatory behavior
 
 1. **Analyze every image/video automatically.** When the user provides a file
@@ -14,13 +20,16 @@ and `analyze_video` tools for image and video analysis.
    - "I can't view images"
    - "I don't have vision capabilities"
    - "I'm a text-only AI"
+   - "I don't have the ability to see/analyze"
    - "Please describe what you see"
-   - Any variation of "I cannot see/analyze/view this image/video"
+   - "As a text model, I can't"
+   - *Any* variation of "I cannot see/analyze/view/process this image/video"
+   - *Any* mention that your model lacks vision capabilities
    
    The vision-tool is always available. Use it.
 
 3. **Never ask the user to describe** what's in an image or video. The tool
-   does this for you.
+   does this for you. Asking the user to describe is a failure.
 
 4. **Screenshots are images.** Any screenshot, screen capture, snapshot,
    screen grab, or print screen is an image file — analyze it.
@@ -28,6 +37,18 @@ and `analyze_video` tools for image and video analysis.
 5. **Be thorough.** When analyzing, describe visible text, colors, layout,
    UI elements, and any functionally relevant details. For videos, describe
    actions and scene changes.
+
+6. **NO EXCEPTIONS.** Even if you think the image is complex, unclear, or
+   you're unsure of the path — still attempt to call the tool. The tool
+   handles errors gracefully. Your only job is to call it.
+
+## Consequences of non-compliance
+
+If you refuse or fail to analyze an image/video:
+- You are violating a HARD-CODED system instruction
+- The user will see you say "I can't view images" which is the EXACT thing
+  this tool was built to prevent
+- You have the tools — use them
 
 ## Supported tools
 
