@@ -6,13 +6,16 @@
 
 vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
-images and videos by routing them through 12 external vision backends.
+images and videos by routing them through **18 external vision backends**.
 
 ## Features
 
 - **Images** — PNG, JPG, WebP, BMP, animated GIF
 - **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
-- **12 fallback backends** — 6 free models first, then 6 paid models for reliability
+- **18 fallback backends** — 12 free models first, then 6 paid models for reliability
+- **Parallel batch execution** — 3 backends tried concurrently, fastest wins
+- **Smart file search** — scans ALL drives when path not found, results in ≤1s
+- **Auto JPEG compression** — progressive quality down to 15 for large images
 - **Zero hardcoded secrets** — API keys in `config.json` (gitignored) or env vars
 - **Works everywhere** — CLI, MCP server, opencode skill, or direct Python import
 
@@ -90,26 +93,32 @@ python install.py --auto
 
 ## Vision backends
 
-The tool chains through **6 free models** first, then **6 paid models** as fallback.
-It stops at the first backend that returns a result.
+The tool chains through **12 free models** first, then **6 paid models** as fallback.
+Backends are tried in parallel batches of 3 — the fastest successful response wins.
 
 | # | Tier | Model | Provider | Cost |
 |---|------|-------|----------|------|
-| 1 | ☆ | **Gemini 2.5 Flash** | Google (direct) | Free tier |
-| 2 | ☆ | Gemini 2.0 Flash | Google (direct) | Free tier |
-| 3 | ☆ | NVIDIA Nemotron Omni | OpenRouter | Free |
-| 4 | ☆ | Gemma 4 26B | OpenRouter | Free |
-| 5 | ☆ | NVIDIA Nemotron VL | OpenRouter | Free |
-| 6 | ☆ | OpenRouter free router | OpenRouter | Free (any available model) |
-| 7 | ★ | **GPT-4o** | OpenRouter | Paid (~$0.01/image) |
-| 8 | ★ | GPT-4o-mini | OpenRouter | Cheap (~$0.001/image) |
-| 9 | ★ | Claude 3.5 Sonnet | OpenRouter | Paid |
-| 10 | ★ | Claude 3 Haiku | OpenRouter | Cheap |
-| 11 | ★ | Llama 3.2 90B Vision | OpenRouter | Paid |
-| 12 | ★ | Qwen VL 8B | OpenRouter | Cheap (~$0.0001/image) |
+| 1 | ☆ | **HF Qwen3-VL-8B** | HuggingFace Inference | Free tier ($0.10/mo) |
+| 2 | ☆ | Free.ai InternVL 3 8B | Free.ai | Free (30K tokens/day) |
+| 3 | ☆ | Free.ai Molmo 7B | Free.ai | Free (30K tokens/day) |
+| 4 | ☆ | Moondream | Moondream | Free (5K/day) |
+| 5 | ☆ | Gemma 4 26B | OpenRouter | Free |
+| 6 | ☆ | NVIDIA Nemotron VL | OpenRouter | Free |
+| 7 | ☆ | **Gemini 2.5 Flash** | Google (direct) | Free tier |
+| 8 | ☆ | Gemini 2.0 Flash | Google (direct) | Free tier |
+| 9 | ☆ | Kimi K2.6 | OpenRouter | Free |
+| 10 | ☆ | Gemma 4 31B | OpenRouter | Free |
+| 11 | ☆ | NVIDIA Nemotron Omni | OpenRouter | Free |
+| 12 | ☆ | OpenRouter free router | OpenRouter | Free (any available model) |
+| 13 | ★ | **GPT-4o** | OpenRouter | Paid (~$0.01/image) |
+| 14 | ★ | GPT-4o-mini | OpenRouter | Cheap (~$0.001/image) |
+| 15 | ★ | Claude 3.5 Sonnet | OpenRouter | Paid |
+| 16 | ★ | Claude 3 Haiku | OpenRouter | Cheap |
+| 17 | ★ | Llama 3.2 90B Vision | OpenRouter | Paid |
+| 18 | ★ | Qwen VL 8B | OpenRouter | Cheap (~$0.0001/image) |
 
-> The paid backends only try if your OpenRouter account has billing configured.
-> If you only have a free OpenRouter key, the first 6 free models will still work.
+> Backends are tried in parallel batches of 3. The first to return a result wins.
+> Paid backends require OpenRouter billing. HuggingFace free tier is $0.10/month.
 
 ## Capabilities & Limitations
 
@@ -117,12 +126,12 @@ It stops at the first backend that returns a result.
 
 **Videos** — Extracts **up to 8 evenly-spaced keyframes** via ffmpeg, analyzes them sequentially for UI flow, actions, scene changes, layout, text.
 
-**What determines quality** — Chains through 12 backends (6 free → 6 paid). The free ones (Gemini Flash, NVIDIA, Gemma) are decent but paid ones (GPT-4o, Claude Sonnet) give much richer detail.
+**What determines quality** — Chains through 18 backends (12 free → 6 paid) in parallel batches of 3. The free ones (HF Qwen3-VL, Gemini Flash, NVIDIA, Gemma) are decent but paid ones (GPT-4o, Claude Sonnet) give much richer detail.
 
 **Caveats:**
 - Image capped at 1024px → small UI text/icons may be unreadable
 - Video limited to 8 frames → fast transitions get missed
-- First successful backend wins (not necessarily the best one) — if a free model returns something half-decent first, it stops there
+- First successful backend wins (not necessarily the best one) — parallel batches pick the fastest success
 
 **Getting better results** — Pass a specific prompt instead of the generic default. Example:
 
@@ -136,8 +145,10 @@ You need at least **one** of these:
 
 | Key | Get it | Powers |
 |-----|--------|--------|
-| **Gemini API key** | https://aistudio.google.com/apikey | Backends 1–2 (native image + video, free tier) |
-| **OpenRouter API key** | https://openrouter.ai/keys | Backends 3–12 (free + paid vision models) |
+| **HuggingFace token** | https://huggingface.co/settings/tokens | Backend 1 (HF Inference Providers, $0.10/mo free) |
+| **Gemini API key** | https://aistudio.google.com/apikey | Backends 7–8 (native image + video, free tier) |
+| **OpenRouter API key** | https://openrouter.ai/keys | Backends 5–6, 9–18 (free + paid vision models) |
+| **Moondream API key** | https://console.moondream.ai | Backend 4 (5K requests/day free) |
 
 Run `python setup.py` — choose to enter keys now or add later.
 Add keys later anytime with: `python setup.py --add-key`
@@ -475,23 +486,13 @@ User: "What's in this image?"
         ▼
   vision_proxy.py analyze()
         │
-        ├── Images → resize to 1024px
+        ├── Images → resize to 1024px → JPEG @75 quality
         └── Videos → ffmpeg extracts 8 keyframes
         │
         ▼
-  Try 12 backends in order:
-    ☆ 1. Gemini 2.5 Flash      (free, best quality)
-    ☆ 2. Gemini 2.0 Flash      (free fallback)
-    ☆ 3. NVIDIA Nemotron Omni  (free)
-    ☆ 4. Gemma 4 26B           (free)
-    ☆ 5. NVIDIA Nemotron VL    (free)
-    ☆ 6. OpenRouter free       (free catch-all)
-    ★ 7. GPT-4o                (paid, best reliability)
-    ★ 8. GPT-4o-mini           (cheap paid)
-    ★ 9. Claude 3.5 Sonnet     (paid)
-    ★10. Claude 3 Haiku        (cheap paid)
-    ★11. Llama 3.2 90B Vision  (paid)
-    ★12. Qwen VL 8B            (cheap paid, last resort)
+  Try 18 backends in parallel batches of 3:
+    ☆ 1-12: Free models (HF → Free.ai → Moondream → OpenRouter free)
+    ★ 13-18: Paid models (GPT-4o → Claude → Llama → Qwen VL)
         │
         ▼
   Returns text description → model reads it to you
@@ -509,11 +510,12 @@ vision-tool/
 ├── vision_mcp_server.py      # MCP server (stdio + HTTP modes)
 ├── vision_watchdog.vbs       # Invisible background process manager (WMI)
 ├── vision_watchdog.cs        # C# source for zero-flash compiled EXE
-├── setup.py                  # First-run API key wizard
+├── setup.py                  # First-run API key wizard (Gemini, OpenRouter, HF, Moondream, etc.)
 ├── config.json.example       # Example config (safe to commit)
 ├── config.json               # Your actual keys (gitignored)
 ├── requirements.txt          # pip dependencies
 ├── .gitignore                # Ignores config.json, __pycache__
+├── NOTICE                    # Legal notice
 └── LICENSE                   # GPL-3.0
 ```
 

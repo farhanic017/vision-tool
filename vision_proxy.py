@@ -538,24 +538,30 @@ def resize_image(path, max_dim=None):
         from PIL import UnidentifiedImageError
 
         img = Image.open(path)
+        img.load()
         w, h = img.size
-        if w <= max_dim and h <= max_dim:
-            with open(path, "rb") as f:
-                return f.read(), get_mime(path)
-        if w > h:
-            nw, nh = max_dim, int(h * max_dim / w)
-        else:
-            nw, nh = int(w * max_dim / h), max_dim
-        img = img.resize((nw, nh), Image.LANCZOS)
+
+        if w > max_dim or h > max_dim:
+            if w > h:
+                nw, nh = max_dim, int(h * max_dim / w)
+            else:
+                nw, nh = int(w * max_dim / h), max_dim
+            img = img.resize((nw, nh), Image.LANCZOS)
+
         buf = io.BytesIO()
-        fmt = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP",
-               ".bmp": "BMP"}.get(os.path.splitext(path)[1].lower(), "PNG")
-        img.save(buf, format=fmt)
-        return buf.getvalue(), get_mime(path)
-    except ImportError:
-        with open(path, "rb") as f:
-            return f.read(), get_mime(path)
-    except (UnidentifiedImageError,):
+        img.save(buf, format="JPEG", quality=75)
+        result = buf.getvalue()
+
+        if len(result) > 3_000_000:
+            quality = 65
+            while len(result) > 3_000_000 and quality >= 15:
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=quality)
+                result = buf.getvalue()
+                quality -= 10
+
+        return result, "image/jpeg"
+    except Exception:
         with open(path, "rb") as f:
             return f.read(), get_mime(path)
 
@@ -1061,6 +1067,12 @@ def analyze(file_path, prompt="", model=None):
         FileNotFoundError: If file does not exist.
         RuntimeError: If all backends fail.
     """
+    if os.path.isdir(file_path):
+        raise FileNotFoundError(
+            f"Path is a directory, not a file: {file_path}\n"
+            f"  Pass the full path to an image or video file."
+        )
+
     if not os.path.isfile(file_path):
         print("SEARCH: Locating file...", file=sys.stderr, flush=True)
         found = find_file(file_path, max_results=1)
@@ -1188,7 +1200,8 @@ def analyze(file_path, prompt="", model=None):
     for batch_start in range(0, len(strategies), BATCH_SIZE):
         batch = strategies[batch_start:batch_start + BATCH_SIZE]
         names = [n for n, _ in batch]
-        print(f"BATCH {batch_start//BATCH_SIZE + 1}/{len(strategies)//BATCH_SIZE + 1}: {' / '.join(names)}", file=sys.stderr, flush=True)
+        total_batches = (len(strategies) + BATCH_SIZE - 1) // BATCH_SIZE
+        print(f"BATCH {batch_start//BATCH_SIZE + 1}/{total_batches}: {' / '.join(names)}", file=sys.stderr, flush=True)
 
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(batch))
         try:
