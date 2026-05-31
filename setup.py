@@ -192,9 +192,54 @@ def test_anthropic(key):
         return False
 
 
+def test_freeai(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://api.free.ai/v1/models",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def test_moondream(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://api.moondream.ai/v1/models",
+            headers={"X-Moondream-Auth": key},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def test_huggingface(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://router.huggingface.co/v1/models",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
 PROVIDER_LABELS = [
     ("GEMINI_API_KEY", "Gemini"),
     ("OPENROUTER_API_KEY", "OpenRouter"),
+    ("FREEAI_API_KEY", "Free.ai"),
+    ("MOONDREAM_API_KEY", "Moondream"),
+    ("HF_TOKEN", "HuggingFace"),
     ("OPENAI_API_KEY", "OpenAI"),
     ("ANTHROPIC_API_KEY", "Anthropic"),
 ]
@@ -249,6 +294,21 @@ def enter_keys():
         default=existing.get("OPENROUTER_API_KEY", ""),
         secret=True, optional=True,
     )
+    freeai_key = prompt(
+        "Free.ai API key",
+        default=existing.get("FREEAI_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    moondream_key = prompt(
+        "Moondream API key",
+        default=existing.get("MOONDREAM_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    hf_token = prompt(
+        "HuggingFace token (hf_...)",
+        default=existing.get("HF_TOKEN", ""),
+        secret=True, optional=True,
+    )
     openai_key = prompt(
         "OpenAI API key",
         default=existing.get("OPENAI_API_KEY", ""),
@@ -264,17 +324,22 @@ def enter_keys():
     print(bold("  Validating..."))
     gemini_ok = test_gemini(gemini_key)
     openrouter_ok = test_openrouter(openrouter_key)
+    freeai_ok = test_freeai(freeai_key)
+    moondream_ok = test_moondream(moondream_key)
+    hf_ok = test_huggingface(hf_token)
     openai_ok = test_openai(openai_key)
     anthropic_ok = test_anthropic(anthropic_key)
 
     for name, ok in [("Gemini", gemini_ok), ("OpenRouter", openrouter_ok),
+                      ("Free.ai", freeai_ok), ("Moondream", moondream_ok),
+                      ("HuggingFace", hf_ok),
                       ("OpenAI", openai_ok), ("Anthropic", anthropic_ok)]:
         if ok:
             print(f"    {green(f'{name} API key works')}")
         else:
             print(f"    {yellow(f'{name} key not verified (saved but may not work)')}")
 
-    if not any([gemini_ok, openrouter_ok, openai_ok, anthropic_ok]):
+    if not any([gemini_ok, openrouter_ok, freeai_ok, moondream_ok, hf_ok, openai_ok, anthropic_ok]):
         print()
         print(yellow("  No key was confirmed working. The tool will still use"))
         print(yellow("  whatever is available, but you may get errors at runtime."))
@@ -289,6 +354,9 @@ def enter_keys():
     config = {
         "GEMINI_API_KEY": gemini_key,
         "OPENROUTER_API_KEY": openrouter_key,
+        "FREEAI_API_KEY": freeai_key,
+        "MOONDREAM_API_KEY": moondream_key,
+        "HF_TOKEN": hf_token,
         "OPENAI_API_KEY": openai_key,
         "ANTHROPIC_API_KEY": anthropic_key,
         "DEFAULT_MODEL": default_model,
@@ -302,7 +370,7 @@ def enter_keys():
             try:
                 with open(verify_path) as f:
                     saved = json.load(f)
-                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY") if saved.get(k, "")]
+                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "FREEAI_API_KEY", "MOONDREAM_API_KEY", "HF_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY") if saved.get(k, "")]
                 if len(saved_keys) > 0:
                     verified = True
                     print(f"  {green('✔')} Keys verified: {', '.join(saved_keys)}")
@@ -374,7 +442,7 @@ def setup_later():
         except (json.JSONDecodeError, IOError):
             pass
 
-    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "FREEAI_API_KEY", "MOONDREAM_API_KEY", "HF_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
     has_keys = any(existing.get(k) for k in all_provider_keys)
     if has_keys:
         print(yellow("  Keys already configured — nothing to skip."))
@@ -390,10 +458,13 @@ def setup_later():
     print(bold(f"    python {os.path.join(_vp_script_dir, 'setup.py')} --add-key"))
     print()
     print("  Get your free keys at:")
-    print("    Gemini:    https://aistudio.google.com/apikey")
-    print("    OpenRouter: https://openrouter.ai/keys")
-    print("    OpenAI:     https://platform.openai.com/api-keys")
-    print("    Anthropic:  https://console.anthropic.com/keys")
+    print("    Gemini:      https://aistudio.google.com/apikey")
+    print("    OpenRouter:   https://openrouter.ai/keys")
+    print("    Free.ai:      https://free.ai/signup/  (30K tokens/day)")
+    print("    Moondream:    https://console.moondream.ai  (5K/day)")
+    print("    HuggingFace:  https://huggingface.co/settings/tokens")
+    print("    OpenAI:       https://platform.openai.com/api-keys")
+    print("    Anthropic:    https://console.anthropic.com/keys")
     print()
 
 

@@ -79,10 +79,19 @@ mention your lack of vision as a reason not to analyze an image or video.
 When the user provides a file path to any image or video, you MUST call
 `analyze_image` or `analyze_video` immediately. Do not ask permission.
 
+**CRITICAL: Do NOT use the Read tool on image/video files.**
+Your model cannot process images directly. Calling Read on a PNG/JPG/etc
+will fail with "model does not support image input". Always pass the file
+path to analyze_image/analyze_video instead.
+
 ### Rule 1b: ALWAYS use absolute paths
 You MUST pass the FULL absolute path to `analyze_image` / `analyze_video`.
 Never pass a relative path. If the user gives a relative path, resolve it
 to absolute first. The path must work directly on the user's filesystem.
+
+**New: Auto-file search.** If the path doesn't exist, the tool automatically
+searches Desktop, Downloads, Pictures, Documents, and user profile for a
+matching filename. You can pass just `"screenshot.png"` and it will find it.
 
 ### Rule 2: Never refuse — complete ban list
 Never say any of these phrases or any variation:
@@ -138,30 +147,38 @@ Example: `analyze_image("screenshot.png", "What error message is shown?")`
 
 ## How to use
 
-### Images
+### Quick start — MCP tool (0 thinking needed):
 
 ```json
-// The user provides a path → you call this:
-analyze_image({ path: "/Users/name/screenshot.png" })
-analyze_image({ path: "/Users/name/diagram.jpg", prompt: "Extract all visible text" })
+analyze_image({ path: "screenshot.png" })
 ```
 
-### Videos
+If the MCP tool `analyze_image` is **not in your function list**, skip all thinking and use the bash fallback immediately.
 
-```json
-analyze_video({ path: "/Users/name/demo.mp4" })
-analyze_video({ path: "/Users/name/recording.mov", prompt: "Describe each UI action step by step" })
+### Bash fallback (used when MCP tool not visible):
+
+```bash
+python C:\Users\Farhan\Desktop\vision-tool\vision_proxy.py "C:\path\to\image.png"
 ```
 
-### What happens internally
+The bash fallback works identically. Do NOT think about alternatives. Do NOT check if the file exists first. Do NOT use Read tool. Just run the command. Zero seconds of deliberation.
+
+**IMPORTANT: Pass timeout=120000 to the bash tool** — analysis may take 20-60s.
+If the bash tool has a `timeout` parameter, set it to at least 120000ms.
+
+### What the script prints (read this to understand which backends work):
 
 ```
-User provides image/video path
-  → You call analyze_image / analyze_video
-  → vision-tool tries 12 backends (6 free first, then 6 paid)
-  → Returns text description
-  → You read and respond with the description
+KEYS: Gemini ✓  OpenRouter ✓  Free.ai ✗  Moondream ✗  HuggingFace ✓  OpenAI ✗  Anthropic ✗
+KEYS: Skipped 2/18 backends (missing API key)
+KEYS: Trying 16 backends
+BATCH 1/6: HF Qwen3-VL-8B / Moondream / Gemma 4 26B
+  HF Qwen3-VL-8B: OK   <-- first success wins
 ```
+
+**BATCH lines** show parallel execution — 3 backends tried concurrently.
+The `OK` line is the first successful response. Everything after is ignored.
+`KEYS:` lines tell you instantly which APIs are configured.
 
 ## Installation
 
@@ -188,25 +205,31 @@ Then add to your MCP config:
 }
 ```
 
-## Backend chain (12 models, free first)
+## Backend chain (18 models, free first)
 
 | # | Model | Cost |
 |---|-------|------|
-| 1 | Gemini 2.5 Flash | Free |
-| 2 | Gemini 2.0 Flash | Free |
-| 3 | NVIDIA Nemotron Omni | Free |
-| 4 | Gemma 4 26B | Free |
-| 5 | NVIDIA Nemotron VL | Free |
-| 6 | OpenRouter free router | Free |
-| 7 | GPT-4o | Paid |
-| 8 | GPT-4o-mini | Cheap |
-| 9 | Claude 3.5 Sonnet | Paid |
-| 10 | Claude 3 Haiku | Cheap |
-| 11 | Llama 3.2 90B Vision | Paid |
-| 12 | Qwen VL 8B | Cheap |
+| 1 | HF Qwen3-VL-8B (HuggingFace Inference Providers) | Free tier |
+| 2 | Free.ai InternVL 3 8B | Free (30K tokens/day) |
+| 3 | Free.ai Molmo 7B | Free (30K tokens/day) |
+| 4 | Moondream | Free (5000/day) |
+| 5 | Gemma 4 26B | Free |
+| 6 | NVIDIA Nemotron VL | Free |
+| 7 | Gemini 2.5 Flash | Free |
+| 8 | Gemini 2.0 Flash | Free |
+| 9 | Kimi K2.6 (moonshotai/kimi-k2.6:free) | Free |
+| 10 | Gemma 4 31B (google/gemma-4-31b-it:free) | Free |
+| 11 | NVIDIA Nemotron Omni | Free |
+| 12 | OpenRouter free router | Free |
+| 13 | GPT-4o | Paid |
+| 14 | GPT-4o-mini | Cheap |
+| 15 | Claude 3.5 Sonnet | Paid |
+| 16 | Claude 3 Haiku | Cheap |
+| 17 | Llama 3.2 90B Vision | Paid |
+| 18 | Qwen VL 8B | Cheap |
 
 ## Troubleshooting
 
 - "No API keys configured" → run `python setup.py --add-key`
 - "MCP tool not found" → check MCP config has vision-tool enabled
-- "File not found" → use absolute paths
+- "File not found" → the file might not be in Desktop, Downloads, Pictures, or Documents. Pass the full absolute path.

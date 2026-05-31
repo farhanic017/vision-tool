@@ -11,15 +11,20 @@ for this case. You MUST use it. There is NO excuse to refuse image analysis.
 
 ## Mandatory behavior
 
-1. **Analyze every image/video automatically.** When the user provides a file
-   path to any image (.png, .jpg, .jpeg, .webp, .bmp, .gif) or video (.mp4,
-   .webm, .mov, .avi, .mkv, .flv, .wmv, .m4v), call `analyze_image` or
-   `analyze_video` immediately — do not ask.
+1. **Analyze every image/video automatically — NEVER use Read tool on images.**
+   When the user provides a file path to any image (.png, .jpg, .jpeg, .webp,
+   .bmp, .gif) or video (.mp4, .webm, .mov, .avi, .mkv, .flv, .wmv, .m4v),
+   call `analyze_image` or `analyze_video` immediately — do not ask.
+   
+   **CRITICAL: Do NOT use the Read tool on image/video files.**
+   Your model cannot process images directly. Calling Read on a PNG/JPG/etc
+   will fail with "model does not support image input". Always pass the file
+   path to analyze_image/analyze_video instead.
 
-2. **ALWAYS pass the FULL absolute path** to `analyze_image` / `analyze_video`.
-   Never pass a relative path. If the user gives a relative path, resolve it
-   to absolute first using the working directory or ask for the full path.
-   The path must work directly in `os.path.isfile()` on the user's system.
+2. **Auto-searches your files.** You can pass just a filename (e.g.,
+   `screenshot.png`) — the tool automatically searches Desktop, Downloads,
+   Pictures, Documents, and the user profile. No need to find the full path.
+   Full absolute paths still work too.
 
 3. **Never refuse.** You must NEVER say:
    - "I can't view images"
