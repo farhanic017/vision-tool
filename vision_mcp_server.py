@@ -63,7 +63,7 @@ def _get_vp():
 TOOLS = {
     "analyze_image": {
         "name": "analyze_image",
-        "description": "Analyse an image file and return an exhaustive text description — all text, colours, layout, UI elements, typography, spacing, etc. Default prompt is already highly detailed (10 categories). Pass a custom prompt for focus.",
+        "description": "Analyse an image file and return a description prefixed with the filename. Covers text, colours, layout, UI elements, typography, spacing, etc. Pass a custom prompt for focus.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -76,7 +76,7 @@ TOOLS = {
     },
     "analyze_video": {
         "name": "analyze_video",
-        "description": "Analyse a video file by extracting keyframes and returning an exhaustive text description — frame-by-frame actions, UI flow, text, scene changes, interactions, etc.",
+        "description": "Analyse a video file by extracting keyframes and returning a description prefixed with the filename. Covers frame-by-frame actions, UI flow, text, scene changes, interactions, etc.",
         "inputSchema": {
             "type": "object",
             "properties": {

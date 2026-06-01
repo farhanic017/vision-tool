@@ -958,7 +958,8 @@ def analyze(file_path, prompt="", model=None):
                VISION_MODEL env var or DEFAULT_MODEL in config.json.
 
     Returns:
-        Description string from the first successful backend.
+        Description string from the first successful backend,
+        prefixed with the filename as a header.
 
     Raises:
         FileNotFoundError: If file does not exist.
@@ -986,6 +987,7 @@ def analyze(file_path, prompt="", model=None):
     else:
         print(f"SEARCH: File exists at {file_path}", file=sys.stderr, flush=True)
 
+    filename = os.path.basename(file_path)
     vid = is_video(file_path)
 
     global CFG
@@ -1045,7 +1047,7 @@ def analyze(file_path, prompt="", model=None):
             text = _call_with_timeout(fn, FAST_TIMEOUT)
             if text and text.strip():
                 print(f"  {name}: OK", file=sys.stderr, flush=True)
-                return text
+                return f"[{filename}]\n{text}"
         except Exception as e:
             msg = str(e)
             if hasattr(e, "code"):
@@ -1068,7 +1070,7 @@ def analyze(file_path, prompt="", model=None):
                 text = fut.result()[1]
                 if text and text.strip():
                     print(f"  {name}: OK", file=sys.stderr, flush=True)
-                    return text
+                    return f"[{filename}]\n{text}"
             except Exception as e:
                 msg = str(e)
                 if hasattr(e, "code"):

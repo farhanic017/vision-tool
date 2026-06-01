@@ -145,6 +145,10 @@ The MCP server exposes these tools at all times:
 Both accept an optional `prompt` parameter for specific questions.
 Example: `analyze_image("screenshot.png", "What error message is shown?")`
 
+**Output format:** Both tools return `[filename]\n<description>`. The filename
+header lets you tell the user which file you're describing instead of just
+saying "this image shows…". Use the filename directly in your response.
+
 ## How to use
 
 ### Quick start — MCP tool (0 thinking needed):

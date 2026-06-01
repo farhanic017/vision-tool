@@ -44,11 +44,15 @@ for this case. You MUST use it. There is NO excuse to refuse image analysis.
 5. **Screenshots are images.** Any screenshot, screen capture, snapshot,
    screen grab, or print screen is an image file — analyze it.
 
-6. **Be thorough.** When analyzing, describe visible text, colors, layout,
+6. **Always mention the filename.** The tool returns `[filename]\n<description>`.
+   Use the filename header so the user knows which image/video you're describing.
+   For example: `[screenshot.png]\nThis is a login screen...`
+
+7. **Be thorough.** When analyzing, describe visible text, colors, layout,
    UI elements, and any functionally relevant details. For videos, describe
    actions and scene changes.
 
-7. **NO EXCEPTIONS.** Even if you think the image is complex, unclear, or
+8. **NO EXCEPTIONS.** Even if you think the image is complex, unclear, or
    you're unsure of the path — still attempt to call the tool. The tool
    handles errors gracefully. Your only job is to call it.
 
