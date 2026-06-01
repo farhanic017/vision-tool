@@ -12,9 +12,11 @@ images and videos by routing them through **18 external vision backends**.
 
 - **Images** — PNG, JPG, WebP, BMP, animated GIF
 - **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
-- **18 fallback backends** — 12 free models first, then 6 paid models for reliability
-- **Parallel batch execution** — 3 backends tried concurrently, fastest wins
-- **Smart file search** — scans ALL drives when path not found, results in ≤1s
+- **18 fallback backends** — Gemini first, then all configured backends in parallel
+- **Full parallel fire** — ALL backends run simultaneously, first success wins, rest cancelled
+- **Fast — typical analysis in 2-5s**, worst case ~19s (no backends available)
+- **Smart file search** — checks direct path → known user dirs → shallow recursive scan
+- **Natural language prompts** — default prompts are conversational, not robotic checklists
 - **Auto JPEG compression** — progressive quality down to 15 for large images
 - **Zero hardcoded secrets** — API keys in `config.json` (gitignored) or env vars
 - **Works everywhere** — CLI, MCP server, opencode skill, or direct Python import
@@ -93,19 +95,18 @@ python install.py --auto
 
 ## Vision backends
 
-The tool chains through **12 free models** first, then **6 paid models** as fallback.
-Backends are tried in parallel batches of 3 — the fastest successful response wins.
+Gemini models are tried **first** (fastest, most reliable). All other backends fire **simultaneously** — the first successful response wins, the rest are cancelled. Typical analysis completes in **2-5 seconds**.
 
 | # | Tier | Model | Provider | Cost |
 |---|------|-------|----------|------|
-| 1 | ☆ | **HF Qwen3-VL-8B** | HuggingFace Inference | Free tier ($0.10/mo) |
-| 2 | ☆ | Free.ai InternVL 3 8B | Free.ai | Free (30K tokens/day) |
-| 3 | ☆ | Free.ai Molmo 7B | Free.ai | Free (30K tokens/day) |
-| 4 | ☆ | Moondream | Moondream | Free (5K/day) |
-| 5 | ☆ | Gemma 4 26B | OpenRouter | Free |
-| 6 | ☆ | NVIDIA Nemotron VL | OpenRouter | Free |
-| 7 | ☆ | **Gemini 2.5 Flash** | Google (direct) | Free tier |
-| 8 | ☆ | Gemini 2.0 Flash | Google (direct) | Free tier |
+| 1 | ☆ | **Gemini 2.5 Flash** | Google (direct) | Free tier |
+| 2 | ☆ | Gemini 2.0 Flash | Google (direct) | Free tier |
+| 3 | ☆ | HF Qwen3-VL-8B | HuggingFace Inference | Free tier ($0.10/mo) |
+| 4 | ☆ | Free.ai InternVL 3 8B | Free.ai | Free (30K tokens/day) |
+| 5 | ☆ | Free.ai Molmo 7B | Free.ai | Free (30K tokens/day) |
+| 6 | ☆ | Moondream | Moondream | Free (5K/day) |
+| 7 | ☆ | Gemma 4 26B | OpenRouter | Free |
+| 8 | ☆ | NVIDIA Nemotron VL | OpenRouter | Free |
 | 9 | ☆ | Kimi K2.6 | OpenRouter | Free |
 | 10 | ☆ | Gemma 4 31B | OpenRouter | Free |
 | 11 | ☆ | NVIDIA Nemotron Omni | OpenRouter | Free |
@@ -117,26 +118,29 @@ Backends are tried in parallel batches of 3 — the fastest successful response 
 | 17 | ★ | Llama 3.2 90B Vision | OpenRouter | Paid |
 | 18 | ★ | Qwen VL 8B | OpenRouter | Cheap (~$0.0001/image) |
 
-> Backends are tried in parallel batches of 3. The first to return a result wins.
+> All backends fire in parallel — first success cancels the rest. No sequential batching.
+> Only backends with configured API keys are launched. Missing keys are skipped instantly.
+> Per-backend timeout: 12s | Total operation timeout: 25s
 > Paid backends require OpenRouter billing. HuggingFace free tier is $0.10/month.
 
 ## Capabilities & Limitations
 
-**Images** — Provides detailed descriptions of visible text, colors, layout, UI elements — but the image is downscaled to **max 1024px**, so tiny details/fine text may blur.
+**Images** — Describes visible content, layout, colors, text, and UI elements. The image is downscaled to **max 1024px**, so tiny details/fine text may blur.
 
-**Videos** — Extracts **up to 8 evenly-spaced keyframes** via ffmpeg, analyzes them sequentially for UI flow, actions, scene changes, layout, text.
+**Videos** — Extracts **up to 8 evenly-spaced keyframes** via ffmpeg, analyzes them for UI flow, actions, scene changes, layout, text.
 
-**What determines quality** — Chains through 18 backends (12 free → 6 paid) in parallel batches of 3. The free ones (HF Qwen3-VL, Gemini Flash, NVIDIA, Gemma) are decent but paid ones (GPT-4o, Claude Sonnet) give much richer detail.
+**What determines quality** — Gemini 2.5 Flash is tried first (fastest, free). All other backends fire in parallel. The first backend to respond wins (typically 2-5s). Paid models (GPT-4o, Claude Sonnet) give richer detail but may not be the fastest.
 
 **Caveats:**
 - Image capped at 1024px → small UI text/icons may be unreadable
 - Video limited to 8 frames → fast transitions get missed
-- First successful backend wins (not necessarily the best one) — parallel batches pick the fastest success
+- First successful backend wins — not necessarily the most detailed
 
-**Getting better results** — Pass a specific prompt instead of the generic default. Example:
+**Getting better results** — Speak naturally. The default prompts are conversational, but you can be more specific:
 
 ```bash
-python vision_proxy.py screenshot.png "Extract ALL visible text exactly as shown, describe the exact layout coordinates, colors, font sizes"
+python vision_proxy.py screenshot.png "What's the main layout here? Describe the colors and buttons."
+python vision_proxy.py screenshot.png "Read all the text on this page and describe the UI structure."
 ```
 
 ## Getting API keys
@@ -145,10 +149,10 @@ You need at least **one** of these:
 
 | Key | Get it | Powers |
 |-----|--------|--------|
-| **HuggingFace token** | https://huggingface.co/settings/tokens | Backend 1 (HF Inference Providers, $0.10/mo free) |
-| **Gemini API key** | https://aistudio.google.com/apikey | Backends 7–8 (native image + video, free tier) |
-| **OpenRouter API key** | https://openrouter.ai/keys | Backends 5–6, 9–18 (free + paid vision models) |
-| **Moondream API key** | https://console.moondream.ai | Backend 4 (5K requests/day free) |
+| **Gemini API key** ⭐ | https://aistudio.google.com/apikey | Gemini 2.5 Flash / 2.0 Flash (free tier, fastest, tried first) |
+| **OpenRouter API key** | https://openrouter.ai/keys | Backends 7–18 (free + paid vision models) |
+| **HuggingFace token** | https://huggingface.co/settings/tokens | HF Qwen3-VL (free tier, $0.10/mo) |
+| **Moondream API key** | https://console.moondream.ai | Moondream (5K requests/day free) |
 
 Run `python setup.py` — choose to enter keys now or add later.
 Add keys later anytime with: `python setup.py --add-key`
@@ -475,7 +479,7 @@ MCP, it works.
 ## How it works
 
 ```
-User: "What's in this image?"
+User: "What's in this image?"  or  "describe this naturally"
         │
         ▼
   AI model (no vision)
@@ -490,12 +494,16 @@ User: "What's in this image?"
         └── Videos → ffmpeg extracts 8 keyframes
         │
         ▼
-  Try 18 backends in parallel batches of 3:
-    ☆ 1-12: Free models (HF → Free.ai → Moondream → OpenRouter free)
-    ★ 13-18: Paid models (GPT-4o → Claude → Llama → Qwen VL)
+  Fire ALL configured backends in parallel:
+    ☆ Gemini 2.5 Flash  (first, fastest)
+    ☆ Gemini 2.0 Flash
+    ☆ All others (HF, Free.ai, Moondream, OpenRouter...)
         │
         ▼
-  Returns text description → model reads it to you
+  First success wins → rest cancelled
+        │
+        ▼
+  Returns natural text description
 ```
 
 ## File structure

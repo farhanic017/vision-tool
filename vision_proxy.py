@@ -998,35 +998,16 @@ def analyze(file_path, prompt="", model=None):
     if not prompt:
         if vid:
             prompt = (
-                "EXHAUSTIVE VIDEO ANALYSIS — Extract EVERY detail frame by frame:\n"
-                "1) ALL visible text — read every word, label, button, menu item, heading, paragraph\n"
-                "2) Exact layout — positions, dimensions, spacing, alignment, grid structure\n"
-                "3) Colors — hex codes where identifiable, palette, gradients, opacity\n"
-                "4) UI elements — buttons, inputs, cards, modals, navigation, icons (describe each)\n"
-                "5) Typography — font families, sizes, weights, line heights, letter spacing\n"
-                "6) Actions and interactions — transitions, animations, hover states, scroll behavior\n"
-                "7) Scene changes — what changed between frames, timing, transitions\n"
-                "8) Visual design tokens — shadows, borders, border-radius, backgrounds, overlays\n"
-                "9) Images and media — describe all visible imagery, icons, illustrations\n"
-                "10) Spacing and proportions — padding, margins, gaps, percentages, ratios\n\n"
-                "Be exhaustive. Describe every pixel column by column, section by section. "
-                "This is for following a COMPLEX DESIGN faithfully — missing details will break the output."
+                "Describe this video naturally — what's happening, what you see changing "
+                "frame to frame. Cover the layout, any visible text or UI elements, "
+                "colors, and scene transitions. Be thorough but conversational."
             )
         else:
             prompt = (
-                "EXHAUSTIVE IMAGE ANALYSIS — Extract EVERY detail visible:\n"
-                "1) ALL visible text — read every word, label, button, menu item, heading, paragraph verbatim\n"
-                "2) Exact layout — positions, dimensions, spacing, alignment, grid/column structure\n"
-                "3) Colors — hex codes where identifiable, palette, gradients, opacity, shadows\n"
-                "4) UI elements — buttons, inputs, cards, modals, navigation, tabs, sliders, icons (describe shape, size, color, state)\n"
-                "5) Typography — font families, sizes, weights, line heights, letter spacing, alignment\n"
-                "6) Visual style — border-radius, box-shadows, borders, backgrounds, overlays, glass effects\n"
-                "7) Images and media — describe all visible imagery, icons, illustrations, their positions and sizes\n"
-                "8) Spacing — padding, margins, gaps between elements, section proportions\n"
-                "9) States — hover, active, disabled, selected, focused (if identifiable)\n"
-                "10) Responsive behavior — any indications of how layout changes at different sizes\n\n"
-                "Be exhaustive. This is for following a COMPLEX DESIGN faithfully — "
-                "missing any detail will break the output. Describe section by section from top to bottom."
+                "What do you see in this image? Describe it naturally — cover the main "
+                "subject, layout, any visible text, colors, and visual style. "
+                "If it's a UI or design screenshot, note key elements, spacing, and how "
+                "things are arranged. Be thorough but conversational."
             )
 
     if vid:

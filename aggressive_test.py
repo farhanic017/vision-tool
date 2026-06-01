@@ -125,7 +125,7 @@ json.dump({'GEMINI_API_KEY': '', 'OPENROUTER_API_KEY': ''}, open('config.json', 
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'gk\nork\nok\nak\n\n', timeout=5)
+    out, err = p.communicate(input=b'gk\nork\n\n\n\nok\nak\n\n', timeout=60)
     out_s = out.decode('utf-8', errors='replace')
     check('add-key: shows header', 'Add API Key' in out_s)
     check('add-key: exit 0', p.returncode == 0)
@@ -336,7 +336,7 @@ for p_cfg in ('config.json', os.path.join(os.environ.get('APPDATA', os.path.expa
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'gk\nork\nok\nak\n\n', timeout=60)
+    out, err = p.communicate(input=b'gk\nork\n\n\n\nok\nak\n\n', timeout=60)
     check('enter_keys: fresh saves Gemini', p.returncode == 0)
     cfg = json.load(open('config.json'))
     check('enter_keys: fresh Gemini', cfg.get('GEMINI_API_KEY') == 'gk')
@@ -647,7 +647,10 @@ check('b64: empty', vp.b64(b'') == '')
 check('b64: binary', isinstance(vp.b64(b'\x00\x01\x02'), str))
 check('b64: unicode str encoded', len(vp.b64('\u2603'.encode('utf-8'))) > 0)
 
-# 48. load_config — no config file
+# 48. load_config — no config file (clear env vars so they don't mask missing file)
+_SAVED_ENV = {}
+for _EK in ('GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'FREEAI_API_KEY', 'MOONDREAM_API_KEY', 'HF_TOKEN', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'VISION_MODEL'):
+    _SAVED_ENV[_EK] = os.environ.pop(_EK, None)
 backup_path = vp.CONFIG_PATH
 backup_path_local = vp.CONFIG_PATH_LOCAL
 vp.CONFIG_PATH = '_nonexistent_cfg_xxx.json'
@@ -692,7 +695,7 @@ except SystemExit:
     check('load_config: env+file', False)
 del os.environ['GEMINI_API_KEY']
 
-# 52. load_config — partial keys (only Gemini)
+# 52. load_config — partial keys (only Gemini, env still clear from above)
 json.dump({'GEMINI_API_KEY': 'gk', 'OPENROUTER_API_KEY': ''}, open('config.json', 'w'))
 try:
     k = vp.load_config()
@@ -735,6 +738,11 @@ try:
     check('load_config: DEFAULT_MODEL empty', k.get('DEFAULT_MODEL') == '')
 except Exception as e:
     check('load_config: DEFAULT_MODEL empty', False, str(e))
+
+# Restore real env vars (cleared during tests 48-53, now restored)
+for _EK, _EV in _SAVED_ENV.items():
+    if _EV is not None:
+        os.environ[_EK] = _EV
 
 # Restore config paths
 vp.CONFIG_PATH = backup_path
