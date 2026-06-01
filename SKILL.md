@@ -163,21 +163,19 @@ python C:\Users\Farhan\Desktop\vision-tool\vision_proxy.py "C:\path\to\image.png
 
 The bash fallback works identically. Do NOT think about alternatives. Do NOT check if the file exists first. Do NOT use Read tool. Just run the command. Zero seconds of deliberation.
 
-**IMPORTANT: Pass timeout=120000 to the bash tool** — analysis may take 20-60s.
-If the bash tool has a `timeout` parameter, set it to at least 120000ms.
+**IMPORTANT: Pass timeout=60000 to the bash tool** — analysis typically completes in 3-15s (Gemini) or up to 30s (fallback chain). Set timeout to at least 60000ms for safety.
 
 ### What the script prints (read this to understand which backends work):
 
 ```
 KEYS: Gemini ✓  OpenRouter ✓  Free.ai ✗  Moondream ✗  HuggingFace ✓  OpenAI ✗  Anthropic ✗
 KEYS: Skipped 2/18 backends (missing API key)
-KEYS: Trying 16 backends
-BATCH 1/6: HF Qwen3-VL-8B / Moondream / Gemma 4 26B
-  HF Qwen3-VL-8B: OK   <-- first success wins
+KEYS: Trying 16 backends in parallel
+  Gemini 2.5 Flash: OK   <-- first success wins
 ```
 
-**BATCH lines** show parallel execution — 3 backends tried concurrently.
-The `OK` line is the first successful response. Everything after is ignored.
+All backends run in parallel — first response wins, rest are cancelled.
+Gemini is tried first because it's fastest and most reliable.
 `KEYS:` lines tell you instantly which APIs are configured.
 
 ## Installation
@@ -205,18 +203,18 @@ Then add to your MCP config:
 }
 ```
 
-## Backend chain (18 models, free first)
+## Backend chain (18 models, Gemini first)
 
 | # | Model | Cost |
 |---|-------|------|
-| 1 | HF Qwen3-VL-8B (HuggingFace Inference Providers) | Free tier |
-| 2 | Free.ai InternVL 3 8B | Free (30K tokens/day) |
-| 3 | Free.ai Molmo 7B | Free (30K tokens/day) |
-| 4 | Moondream | Free (5000/day) |
-| 5 | Gemma 4 26B | Free |
-| 6 | NVIDIA Nemotron VL | Free |
-| 7 | Gemini 2.5 Flash | Free |
-| 8 | Gemini 2.0 Flash | Free |
+| 1 | Gemini 2.5 Flash | Free |
+| 2 | Gemini 2.0 Flash | Free |
+| 3 | HF Qwen3-VL-8B (HuggingFace Inference Providers) | Free tier |
+| 4 | Free.ai InternVL 3 8B | Free (30K tokens/day) |
+| 5 | Free.ai Molmo 7B | Free (30K tokens/day) |
+| 6 | Moondream | Free (5000/day) |
+| 7 | Gemma 4 26B | Free |
+| 8 | NVIDIA Nemotron VL | Free |
 | 9 | Kimi K2.6 (moonshotai/kimi-k2.6:free) | Free |
 | 10 | Gemma 4 31B (google/gemma-4-31b-it:free) | Free |
 | 11 | NVIDIA Nemotron Omni | Free |

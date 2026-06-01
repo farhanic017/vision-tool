@@ -20,13 +20,10 @@ Handles:
   - Images  (png, jpg, webp, bmp, gif)
   - Videos  (mp4, webm, mov, avi, mkv, flv, wmv, m4v) via ffmpeg keyframe extraction
 
-Chains through free backends first, then paid fallbacks:
-  Free:   Free.ai InternVL 3 8B → Free.ai Molmo 7B → Moondream →
-          Gemma 4 26B → NVIDIA Nemotron VL → Gemini 2.5 Flash →
-          Gemini 2.0 Flash → Kimi K2.6 → Gemma 4 31B →
-          NVIDIA Nemotron Omni → OpenRouter free
-  Paid:   GPT-4o → GPT-4o-mini → Claude 3.5 Sonnet → Claude 3 Haiku →
-          Llama 3.2 90B Vision → Qwen VL 8B
+Tries Gemini first (fastest, most reliable), then all other configured
+backends in parallel — first success wins, rest cancelled.
+  Priority: Gemini 2.5 Flash → Gemini 2.0 Flash → all others in parallel
+  Total timeout: 25s | Per-backend timeout: 15s
 
 Custom model (auto-routes to best provider):
   --model "gpt-4o"         → tries native OpenAI first, then OpenRouter
@@ -61,6 +58,7 @@ import shutil
 import string
 import time
 import concurrent.futures
+import threading
 
 # ── UTF-8 stdout wrapper (Windows cp1252 fix) — module level ──────────
 
@@ -78,126 +76,55 @@ def _wrap_utf8():
     pass
 
 
-# ── Cross-drive file search — finds files on ANY drive, no restrictions ─
+# ── File search — fast, simple, user-dirs only ───────────────────────────
 _SEARCH_CACHE = {}
-_GLOBAL_SEARCH_TIMEOUT = 15  # hard limit for entire search (seconds)
-
-def _get_all_drives():
-    """Detect all available drives (A:-Z: on Windows, / on Unix)."""
-    key = "_all_drives"
-    if key in _SEARCH_CACHE:
-        return _SEARCH_CACHE[key]
-    drives = []
-    if sys.platform == "win32":
-        for letter in string.ascii_uppercase:
-            path = f"{letter}:\\"
-            try:
-                if os.path.exists(path):
-                    drives.append(path)
-            except Exception:
-                continue
-    else:
-        drives.append("/")
-    _SEARCH_CACHE[key] = drives
-    return drives
+_GLOBAL_SEARCH_TIMEOUT = 5  # seconds for optional recursive fallback
 
 
 def _get_search_dirs():
-    """Every directory we check directly — drive roots + common user dirs on ALL drives.
-    
-    Returns two lists: (phase1_dirs, phase3_dirs).
-    - phase1_dirs: all dirs for instant direct checks (includes large containers like Users)
-    - phase3_dirs: ONLY small end-user dirs safe for recursive scandir (Desktop, Downloads, etc.)
-    """
-    key = "dirs"
+    """Known user directories to check for files. No drive scanning."""
+    key = "search_dirs"
     if key in _SEARCH_CACHE:
         return _SEARCH_CACHE[key]
-    all_dirs = set()
-    shallow_dirs = set()
+    dirs = set()
     username = os.environ.get("USERNAME", "")
-
-    for drive in _get_all_drives():
-        root = drive.rstrip("\\/")
-        all_dirs.add(root)
-
-        users = os.path.join(drive, "Users")
-        if os.path.isdir(users):
-            all_dirs.add(users)
-            if username:
-                for sub in ("Desktop", "Downloads", "Pictures", "Documents",
-                            "Music", "Videos", "OneDrive"):
-                    p = os.path.join(users, username, sub)
-                    if os.path.isdir(p):
-                        all_dirs.add(p)
-                        shallow_dirs.add(p)
-                ss = os.path.join(users, username, "Pictures", "Screenshots")
-                if os.path.isdir(ss):
-                    all_dirs.add(ss)
-                    shallow_dirs.add(ss)
-            pub = os.path.join(users, "Public")
-            if os.path.isdir(pub):
-                all_dirs.add(pub)
-
-        for common in ("Temp", "Data", "Projects", "Workspace", "Shared", "Backup", "Home"):
-            p = os.path.join(drive, common)
-            if os.path.isdir(p):
-                all_dirs.add(p)
-                shallow_dirs.add(p)
-
-    home = os.path.abspath(os.path.expanduser("~"))
-    all_dirs.add(home)
+    for drive_letter in string.ascii_uppercase:
+        drive = f"{drive_letter}:"
+        if not os.path.isdir(drive):
+            continue
+        if username:
+            for sub in ("Desktop", "Downloads", "Pictures", "Documents",
+                        "Pictures\\Screenshots", "AppData\\Roaming\\Microsoft\\Windows\\Recent"):
+                p = os.path.join(drive, "Users", username, sub)
+                if os.path.isdir(p):
+                    dirs.add(os.path.abspath(p))
     try:
-        cwd = os.path.abspath(os.getcwd())
-        all_dirs.add(cwd)
-        shallow_dirs.add(cwd)
+        dirs.add(os.path.abspath(os.getcwd()))
     except Exception:
         pass
-
-    result = (sorted(all_dirs), sorted(shallow_dirs))
+    home = os.path.abspath(os.path.expanduser("~"))
+    if os.path.isdir(home):
+        dirs.add(home)
+    result = sorted(dirs)
     _SEARCH_CACHE[key] = result
     return result
 
 
-_SKIP_DIR_NAMES = {
-    "$recycle.bin", "$sysreset", "system volume information",
-    "windows", "winnt", "winxs", "program files", "program files (x86)",
-    "programdata", "config.msi", "boot", "recovery", "perflogs",
-    "recycler", "python314", "python313", "python312", "python311",
-    "msocache", "cache", "amd64", "i386",
-}
-
-_SKIP_PREFIXES = {"$", "."}
-
 def _should_skip_dir(name):
-    """Check if a directory should be skipped during search."""
     lower = name.lower()
-    if lower in _SKIP_DIR_NAMES:
+    if lower in {"$recycle.bin", "windows", "winnt", "program files",
+                 "program files (x86)", "programdata", "boot", "recovery",
+                 "perflogs", "system volume information"}:
         return True
-    if name.startswith("$") or name.startswith("."):
-        return True
-    return False
+    return name.startswith("$") or name.startswith(".")
 
 
-def _scandir_walk(root_dir, filename, deadline, max_depth=5,
-                  partial=False, stop_early=True, seen=None):
-    """Fast file search using os.scandir with strict deadline at every level.
-    
-    Yields absolute paths to matching files. Checks `time.time() >= deadline`
-    before every directory entry — never blocks longer than remaining time.
-    Skips system directories ($Recycle.Bin, Windows, Program Files, etc.).
-    """
-    if seen is None:
-        seen = set()
+def _scandir_walk(root_dir, filename, deadline, max_depth=3):
+    """Quick recursive file search with deadline. Depth-limited."""
     if not os.path.isdir(root_dir):
         return
-
     root_dir = os.path.abspath(root_dir)
     file_lower = filename.lower()
-    file_stem, file_ext = os.path.splitext(filename)
-    stem_lower = file_stem.lower() if file_stem else ""
-    ext_lower = file_ext.lower() if file_ext else ""
-
-    # BFS with depth tracking — most matches are near the root
     queue = [(root_dir, 0)]
     while queue and time.time() < deadline:
         dirpath, depth = queue.pop(0)
@@ -215,43 +142,14 @@ def _scandir_walk(root_dir, filename, deadline, max_depth=5,
                     if is_dir:
                         if depth < max_depth and not _should_skip_dir(entry.name):
                             queue.append((entry.path, depth + 1))
-                    else:
-                        name = entry.name
-                        if partial:
-                            if stem_lower and (stem_lower in name.lower()):
-                                if ext_lower:
-                                    if not name.lower().endswith(ext_lower):
-                                        continue
-                                abspath = entry.path
-                                if abspath not in seen:
-                                    seen.add(abspath)
-                                    yield abspath
-                                    if stop_early:
-                                        return
-                        else:
-                            if name.lower() == file_lower:
-                                abspath = entry.path
-                                if abspath not in seen:
-                                    seen.add(abspath)
-                                    yield abspath
-                                    if stop_early:
-                                        return
+                    elif entry.name.lower() == file_lower:
+                        yield os.path.abspath(entry.path)
         except (PermissionError, OSError):
             continue
 
 
 def find_file(name, max_results=5):
-    """Find a file anywhere on the system — ALL drives, no restrictions.
-    
-    Strategy (fast → slow) with a global timeout:
-      1. Direct check against every search dir (instant)
-      2. BFS scandir on drive roots (strict deadline, depth 5)
-      3. BFS scandir on shallow dirs  (strict deadline, depth 5)
-      4. Partial-match fallback (stem + ext)
-    
-    If the global timeout is hit, returns whatever was found so far.
-    Results are cached so repeated lookups for the same file are instant.
-    """
+    """Fast file search — checks direct path, then user dirs, then shallow recursive."""
     if not name:
         return []
     name = name.strip().strip('"\'').strip()
@@ -263,113 +161,30 @@ def find_file(name, max_results=5):
     if os.path.isfile(abs_check):
         return [abs_check]
 
-    all_dirs, shallow_dirs = _get_search_dirs()
-    cache_key = (basename, tuple(all_dirs), tuple(shallow_dirs), tuple(_get_all_drives()))
+    cache_key = ("find", basename)
     if cache_key in _SEARCH_CACHE:
         return _SEARCH_CACHE[cache_key]
 
-    deadline = time.time() + _GLOBAL_SEARCH_TIMEOUT
-    results = []
-    seen = set()
-    all_drives = _get_all_drives()
-    drive_roots = {d.rstrip("\\/") for d in all_drives}
-
-    # ── Phase 1: Direct check (instant) — all dirs ───────────────────
-    for d in all_dirs:
-        if time.time() >= deadline:
-            break
+    dirs = _get_search_dirs()
+    # Direct check (instant)
+    for d in dirs:
         candidate = os.path.join(d, basename)
         if os.path.isfile(candidate):
-            abspath = os.path.abspath(candidate)
-            if abspath not in seen:
-                seen.add(abspath)
-                results.append(abspath)
-                if len(results) >= max_results:
-                    _SEARCH_CACHE[cache_key] = results
-                    return results
+            result = [os.path.abspath(candidate)]
+            _SEARCH_CACHE[cache_key] = result
+            return result
 
-    # ── Phase 2: Drive root search — ALL drives in PARALLEL ──────────
-    if time.time() < deadline and len(results) < max_results:
-        drives_to_search = [d for d in all_drives if os.path.isdir(d)]
-        print(f"SEARCH: Scanning {len(drives_to_search)} drive(s) in parallel...", file=sys.stderr, flush=True)
-        for match in _parallel_search(drives_to_search, basename, deadline,
-                                       max_depth=5, partial=False):
-            if len(results) >= max_results:
-                break
-            if match not in seen:
-                seen.add(match)
-                results.append(match)
-                if len(results) >= max_results:
-                    _SEARCH_CACHE[cache_key] = results
-                    return results
+    # Shallow recursive scan (depth 3, 5s max)
+    deadline = time.time() + _GLOBAL_SEARCH_TIMEOUT
+    for d in dirs:
+        if time.time() >= deadline:
+            break
+        for match in _scandir_walk(d, basename, deadline, max_depth=3):
+            _SEARCH_CACHE[cache_key] = [match]
+            return [match]
 
-    # ── Phase 3: Shallow dir search — ALL dirs in PARALLEL ───────────
-    if time.time() < deadline and len(results) < max_results:
-        shallow_to_search = [d for d in shallow_dirs
-                             if os.path.isdir(d) and d.rstrip("\\/") not in drive_roots]
-        for match in _parallel_search(shallow_to_search, basename, deadline,
-                                       max_depth=5, partial=False):
-            if len(results) >= max_results:
-                break
-            if match not in seen:
-                seen.add(match)
-                results.append(match)
-                if len(results) >= max_results:
-                    _SEARCH_CACHE[cache_key] = results
-                    return results
-
-    # ── Phase 4: Partial match fallback — ALL in PARALLEL ────────────
-    stem, ext = os.path.splitext(basename)
-    if stem and time.time() < deadline and len(results) < max_results:
-        partial_to_search = []
-        partial_to_search.extend(d for d in all_drives if os.path.isdir(d))
-        partial_to_search.extend(d for d in shallow_dirs
-                                 if os.path.isdir(d) and d.rstrip("\\/") not in drive_roots)
-        for match in _parallel_search(partial_to_search, basename, deadline,
-                                       max_depth=5, partial=True):
-            if len(results) >= max_results:
-                break
-            if match not in seen:
-                seen.add(match)
-                results.append(match)
-                if len(results) >= max_results:
-                    _SEARCH_CACHE[cache_key] = results
-                    return results
-
-    _SEARCH_CACHE[cache_key] = results
-    return results
-
-
-def _parallel_search(search_items, basename, deadline, partial=False, max_depth=5, max_workers=8):
-    """Run _scandir_walk on multiple roots in parallel. Yields results as they come."""
-    seen_par = set()
-    found = []
-    lock = None  # not needed since we collect per-thread and merge
-
-    def _search_one(root):
-        local_results = []
-        for match in _scandir_walk(root, basename, deadline,
-                                    max_depth=max_depth, partial=partial,
-                                    stop_early=False, seen=set()):
-            local_results.append(match)
-        return local_results
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_search_one, item): item for item in search_items}
-        for future in concurrent.futures.as_completed(futures, timeout=deadline - time.time()):
-            if time.time() >= deadline:
-                break
-            try:
-                for match in future.result():
-                    if match not in seen_par:
-                        seen_par.add(match)
-                        found.append(match)
-                        yield match
-            except Exception:
-                continue
-
-    for m in found:
-        yield m
+    _SEARCH_CACHE[cache_key] = []
+    return []
 
 
 # ── Config loader ────────────────────────────────────────────────────────
@@ -1048,6 +863,88 @@ def _call_with_timeout(fn, timeout_sec=15):
         pool.shutdown(wait=False)
 
 
+# ── Strategy builder — Gemini always first ──────────────────────────────
+
+def _build_strategies(kind, *args, prompt=""):
+    """Build backend strategy list with Gemini models first, then others."""
+    if kind == "vid":
+        frames = args[0]
+        # Gemini models first
+        s = [
+            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.5-flash")),
+            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.0-flash")),
+            ("\u2606 HF Qwen3-VL-8B", lambda: call_hf_multi(frames, prompt, "Qwen/Qwen3-VL-8B-Instruct")),
+            ("\u2606 Free.ai InternVL 3 8B", lambda: call_freeai_multi(frames, prompt, "internvl-3-8b")),
+            ("\u2606 Free.ai Molmo 7B", lambda: call_freeai_multi(frames, prompt, "molmo-7b")),
+            ("\u2606 Moondream", lambda: call_moondream_multi(frames, prompt, "moondream3")),
+            ("\u2606 Gemma 4 26B", lambda: call_openrouter_multi(frames, prompt, "google/gemma-4-26b-a4b-it:free")),
+            ("\u2606 Kimi K2.6", lambda: call_openrouter_multi(frames, prompt, "moonshotai/kimi-k2.6:free")),
+            ("\u2606 Gemma 4 31B", lambda: call_openrouter_multi(frames, prompt, "google/gemma-4-31b-it:free")),
+            ("\u2606 NVIDIA Nemotron VL", lambda: call_openrouter_multi(frames, prompt, "nvidia/nemotron-nano-12b-v2-vl:free")),
+            ("\u2606 NVIDIA Nemotron Omni", lambda: call_openrouter_multi(frames, prompt, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")),
+            ("\u2606 OpenRouter free", lambda: call_openrouter_multi(frames, prompt, "openrouter/free")),
+            ("\u2605 GPT-4o", lambda: call_openrouter_multi(frames, prompt, "openai/gpt-4o")),
+            ("\u2605 GPT-4o-mini", lambda: call_openrouter_multi(frames, prompt, "openai/gpt-4o-mini")),
+            ("\u2605 Claude 3.5 Sonnet", lambda: call_openrouter_multi(frames, prompt, "anthropic/claude-3.5-sonnet")),
+            ("\u2605 Claude 3 Haiku", lambda: call_openrouter_multi(frames, prompt, "anthropic/claude-3-haiku")),
+            ("\u2605 Llama 3.2 90B Vision", lambda: call_openrouter_multi(frames, prompt, "meta-llama/llama-3.2-90b-vision-instruct")),
+            ("\u2605 Qwen VL 8B", lambda: call_openrouter_multi(frames, prompt, "qwen/qwen3-vl-8b-instruct")),
+        ]
+    else:
+        img_b64, mime = args
+        s = [
+            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.5-flash")),
+            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.0-flash")),
+            ("\u2606 HF Qwen3-VL-8B", lambda: call_hf_inference(img_b64, mime, prompt, "Qwen/Qwen3-VL-8B-Instruct")),
+            ("\u2606 Free.ai InternVL 3 8B", lambda: call_freeai(img_b64, mime, prompt, "internvl-3-8b")),
+            ("\u2606 Free.ai Molmo 7B", lambda: call_freeai(img_b64, mime, prompt, "molmo-7b")),
+            ("\u2606 Moondream", lambda: call_moondream(img_b64, mime, prompt, "moondream3")),
+            ("\u2606 Gemma 4 26B", lambda: call_openrouter(img_b64, mime, prompt, "google/gemma-4-26b-a4b-it:free")),
+            ("\u2606 NVIDIA Nemotron VL", lambda: call_openrouter(img_b64, mime, prompt, "nvidia/nemotron-nano-12b-v2-vl:free")),
+            ("\u2606 Kimi K2.6", lambda: call_openrouter(img_b64, mime, prompt, "moonshotai/kimi-k2.6:free")),
+            ("\u2606 Gemma 4 31B", lambda: call_openrouter(img_b64, mime, prompt, "google/gemma-4-31b-it:free")),
+            ("\u2606 NVIDIA Nemotron Omni", lambda: call_openrouter(img_b64, mime, prompt, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")),
+            ("\u2606 OpenRouter free", lambda: call_openrouter(img_b64, mime, prompt, "openrouter/free")),
+            ("\u2605 GPT-4o", lambda: call_openrouter(img_b64, mime, prompt, "openai/gpt-4o")),
+            ("\u2605 GPT-4o-mini", lambda: call_openrouter(img_b64, mime, prompt, "openai/gpt-4o-mini")),
+            ("\u2605 Claude 3.5 Sonnet", lambda: call_openrouter(img_b64, mime, prompt, "anthropic/claude-3.5-sonnet")),
+            ("\u2605 Claude 3 Haiku", lambda: call_openrouter(img_b64, mime, prompt, "anthropic/claude-3-haiku")),
+            ("\u2605 Llama 3.2 90B Vision", lambda: call_openrouter(img_b64, mime, prompt, "meta-llama/llama-3.2-90b-vision-instruct")),
+            ("\u2605 Qwen VL 8B", lambda: call_openrouter(img_b64, mime, prompt, "qwen/qwen3-vl-8b-instruct")),
+        ]
+    return s
+
+
+def _insert_model_strategies(strategies, model, kind, *args, prompt=""):
+    """Insert provider-aware strategies for a custom model at the front."""
+    dispatch = {
+        "gemini": (call_gemini, call_gemini_multi),
+        "openai": (call_openai, call_openai_multi),
+        "anthropic": (call_anthropic, call_anthropic_multi),
+        "hf": (call_hf_inference, call_hf_multi),
+        "freeai": (call_freeai, call_freeai_multi),
+        "moondream": (call_moondream, call_moondream_multi),
+        "openrouter": (call_openrouter, call_openrouter_multi),
+    }
+    is_vid = kind == "vid"
+    for prov, native_model in reversed(get_providers_for_model(model)):
+        pair = dispatch.get(prov)
+        if not pair:
+            continue
+        fn_img, fn_vid = pair
+        fn = fn_vid if is_vid else fn_img
+        if is_vid:
+            strategies.insert(0, (
+                f"\u2605 {prov.title()}: {model}",
+                lambda m=native_model, f=fn: f(args[0], prompt, m),
+            ))
+        else:
+            strategies.insert(0, (
+                f"\u2605 {prov.title()}: {model}",
+                lambda m=native_model, f=fn: f(args[0], args[1], prompt, m),
+            ))
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 
 def analyze(file_path, prompt="", model=None):
@@ -1134,150 +1031,54 @@ def analyze(file_path, prompt="", model=None):
 
     if vid:
         frames = extract_video_frames(file_path, max_frames=8)
-
-        strategies = [
-            ("\u2606 HF Qwen3-VL-8B", lambda: call_hf_multi(frames, prompt, "Qwen/Qwen3-VL-8B-Instruct")),
-            ("\u2606 Free.ai InternVL 3 8B", lambda: call_freeai_multi(frames, prompt, "internvl-3-8b")),
-            ("\u2606 Free.ai Molmo 7B", lambda: call_freeai_multi(frames, prompt, "molmo-7b")),
-            ("\u2606 Moondream", lambda: call_moondream_multi(frames, prompt, "moondream3")),
-            ("\u2606 Gemma 4 26B", lambda: call_openrouter_multi(frames, prompt, "google/gemma-4-26b-a4b-it:free")),
-            ("\u2606 NVIDIA Nemotron VL", lambda: call_openrouter_multi(frames, prompt, "nvidia/nemotron-nano-12b-v2-vl:free")),
-            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.5-flash")),
-            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.0-flash")),
-            ("\u2606 Kimi K2.6", lambda: call_openrouter_multi(frames, prompt, "moonshotai/kimi-k2.6:free")),
-            ("\u2606 Gemma 4 31B", lambda: call_openrouter_multi(frames, prompt, "google/gemma-4-31b-it:free")),
-            ("\u2606 NVIDIA Nemotron Omni", lambda: call_openrouter_multi(frames, prompt, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")),
-            ("\u2606 OpenRouter free", lambda: call_openrouter_multi(frames, prompt, "openrouter/free")),
-            ("\u2605 GPT-4o", lambda: call_openrouter_multi(frames, prompt, "openai/gpt-4o")),
-            ("\u2605 GPT-4o-mini", lambda: call_openrouter_multi(frames, prompt, "openai/gpt-4o-mini")),
-            ("\u2605 Claude 3.5 Sonnet", lambda: call_openrouter_multi(frames, prompt, "anthropic/claude-3.5-sonnet")),
-            ("\u2605 Claude 3 Haiku", lambda: call_openrouter_multi(frames, prompt, "anthropic/claude-3-haiku")),
-            ("\u2605 Llama 3.2 90B Vision", lambda: call_openrouter_multi(frames, prompt, "meta-llama/llama-3.2-90b-vision-instruct")),
-            ("\u2605 Qwen VL 8B", lambda: call_openrouter_multi(frames, prompt, "qwen/qwen3-vl-8b-instruct")),
-        ]
-        # Insert custom model strategies (provider-aware)
-        if model:
-            _insert_model_strategies(strategies, model, "vid", frames, prompt)
+        strategies = _build_strategies("vid", frames, prompt=prompt)
     else:
         data, mime = resize_image(file_path, 1024)
         img_b64 = b64(data)
+        strategies = _build_strategies("img", img_b64, mime, prompt=prompt)
 
-        strategies = [
-            ("\u2606 HF Qwen3-VL-8B", lambda: call_hf_inference(img_b64, mime, prompt, "Qwen/Qwen3-VL-8B-Instruct")),
-            ("\u2606 Free.ai InternVL 3 8B", lambda: call_freeai(img_b64, mime, prompt, "internvl-3-8b")),
-            ("\u2606 Free.ai Molmo 7B", lambda: call_freeai(img_b64, mime, prompt, "molmo-7b")),
-            ("\u2606 Moondream", lambda: call_moondream(img_b64, mime, prompt, "moondream3")),
-            ("\u2606 Gemma 4 26B", lambda: call_openrouter(img_b64, mime, prompt, "google/gemma-4-26b-a4b-it:free")),
-            ("\u2606 NVIDIA Nemotron VL", lambda: call_openrouter(img_b64, mime, prompt, "nvidia/nemotron-nano-12b-v2-vl:free")),
-            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.5-flash")),
-            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.0-flash")),
-            ("\u2606 Kimi K2.6", lambda: call_openrouter(img_b64, mime, prompt, "moonshotai/kimi-k2.6:free")),
-            ("\u2606 Gemma 4 31B", lambda: call_openrouter(img_b64, mime, prompt, "google/gemma-4-31b-it:free")),
-            ("\u2606 NVIDIA Nemotron Omni", lambda: call_openrouter(img_b64, mime, prompt, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")),
-            ("\u2606 OpenRouter free", lambda: call_openrouter(img_b64, mime, prompt, "openrouter/free")),
-            ("\u2605 GPT-4o", lambda: call_openrouter(img_b64, mime, prompt, "openai/gpt-4o")),
-            ("\u2605 GPT-4o-mini", lambda: call_openrouter(img_b64, mime, prompt, "openai/gpt-4o-mini")),
-            ("\u2605 Claude 3.5 Sonnet", lambda: call_openrouter(img_b64, mime, prompt, "anthropic/claude-3.5-sonnet")),
-            ("\u2605 Claude 3 Haiku", lambda: call_openrouter(img_b64, mime, prompt, "anthropic/claude-3-haiku")),
-            ("\u2605 Llama 3.2 90B Vision", lambda: call_openrouter(img_b64, mime, prompt, "meta-llama/llama-3.2-90b-vision-instruct")),
-            ("\u2605 Qwen VL 8B", lambda: call_openrouter(img_b64, mime, prompt, "qwen/qwen3-vl-8b-instruct")),
-        ]
-        if model:
-            _insert_model_strategies(strategies, model, "img", img_b64, mime, prompt)
+    if model:
+        _insert_model_strategies(strategies, model, "vid" if vid else "img",
+                                 *(frames if vid else (img_b64, mime)), prompt=prompt)
 
-    # Skip backends whose required API key is not configured
+    # Filter to only configured backends
     before = len(strategies)
     strategies = [(n, f) for n, f in strategies if _has_key(n)]
     skipped = before - len(strategies)
     if skipped:
         print(f"KEYS: Skipped {skipped}/{before} backends (missing API key)", file=sys.stderr, flush=True)
-    print(f"KEYS: Trying {len(strategies)} backends", file=sys.stderr, flush=True)
+    print(f"KEYS: Trying {len(strategies)} backends in parallel", file=sys.stderr, flush=True)
 
-    # Try backends in parallel batches (3 at a time) — fastest result wins
-    BATCH_SIZE = 3
-    BATCH_TIMEOUT = 35  # seconds per batch
+    if not strategies:
+        raise RuntimeError("No backends available — configure at least one API key (python setup.py)")
+
+    # Fire ALL backends in parallel — first success wins, cancel rest
+    PER_CALL_TIMEOUT = 12  # seconds per individual backend
+    TOTAL_TIMEOUT = 25     # seconds for entire operation
     last_error = ""
-    for batch_start in range(0, len(strategies), BATCH_SIZE):
-        batch = strategies[batch_start:batch_start + BATCH_SIZE]
-        names = [n for n, _ in batch]
-        total_batches = (len(strategies) + BATCH_SIZE - 1) // BATCH_SIZE
-        print(f"BATCH {batch_start//BATCH_SIZE + 1}/{total_batches}: {' / '.join(names)}", file=sys.stderr, flush=True)
 
-        pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(batch))
-        try:
-            # Each backend gets a 15s total wall-clock timeout via _call_with_timeout
-            futs = {pool.submit(lambda f=fn: _call_with_timeout(f, 30)): n for n, fn in batch}
-            pending = set(futs)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(strategies))
+    futs = {pool.submit(lambda f=fn, n=name: (n, _call_with_timeout(f, PER_CALL_TIMEOUT))): name for name, fn in strategies}
+    try:
+        for fut in concurrent.futures.as_completed(futs, timeout=TOTAL_TIMEOUT):
+            name = futs[fut]
             try:
-                for fut in concurrent.futures.as_completed(futs, timeout=BATCH_TIMEOUT):
-                    name = futs[fut]
-                    pending.discard(fut)
-                    try:
-                        text = fut.result()
-                        if text and text.strip():
-                            print(f"  {name}: OK", file=sys.stderr, flush=True)
-                            return text
-                        print(f"  {name}: empty response", file=sys.stderr, flush=True)
-                    except Exception as e:
-                        msg = str(e)
-                        if hasattr(e, "code"):
-                            msg = f"HTTP {e.code}"
-                        last_error = msg
-                        print(f"  {name}: FAILED ({msg})", file=sys.stderr, flush=True)
-                # All finished without success
-                for p in pending:
-                    n = futs[p]
-                    try:
-                        p.result()
-                        print(f"  {n}: empty response", file=sys.stderr, flush=True)
-                    except Exception as e:
-                        msg = str(e)
-                        if hasattr(e, "code"):
-                            msg = f"HTTP {e.code}"
-                        print(f"  {n}: FAILED ({msg})", file=sys.stderr, flush=True)
-            except concurrent.futures.TimeoutError:
-                print(f"  (batch timed out after {BATCH_TIMEOUT}s)", file=sys.stderr, flush=True)
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+                text = fut.result()[1]
+                if text and text.strip():
+                    print(f"  {name}: OK", file=sys.stderr, flush=True)
+                    return text
+            except Exception as e:
+                msg = str(e)
+                if hasattr(e, "code"):
+                    msg = f"HTTP {e.code}"
+                last_error = msg
+                print(f"  {name}: FAILED ({msg})", file=sys.stderr, flush=True)
+    except concurrent.futures.TimeoutError:
+        pass
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     raise RuntimeError(f"All vision backends failed. Last error: {last_error}")
-
-
-def _insert_model_strategies(strategies, model, kind, *args):
-    """Insert provider-aware strategies for a custom model at the front.
-
-    Each provider (gemini, openai, anthropic, openrouter) is tried with
-    its native API first, then OpenRouter as the universal fallback.
-    Only providers with a configured key are included.
-    """
-    dispatch = {
-        "gemini": (call_gemini, call_gemini_multi),
-        "openai": (call_openai, call_openai_multi),
-        "anthropic": (call_anthropic, call_anthropic_multi),
-        "hf": (call_hf_inference, call_hf_multi),
-        "freeai": (call_freeai, call_freeai_multi),
-        "moondream": (call_moondream, call_moondream_multi),
-        "openrouter": (call_openrouter, call_openrouter_multi),
-    }
-    is_vid = kind == "vid"
-    # Reverse so the first matching provider ends up first in strategies
-    for prov, native_model in reversed(get_providers_for_model(model)):
-        pair = dispatch.get(prov)
-        if not pair:
-            continue
-        fn_img, fn_vid = pair
-        fn = fn_vid if is_vid else fn_img
-        if is_vid:
-            strategies.insert(0, (
-                f"\u2605 {prov.title()}: {model}",
-                lambda m=native_model, f=fn: f(args[0], prompt, m),
-            ))
-        else:
-            strategies.insert(0, (
-                f"\u2605 {prov.title()}: {model}",
-                lambda m=native_model, f=fn: f(args[0], args[1], prompt, m),
-            ))
-
 
 
 # ── CLI entry point ─────────────────────────────────────────────────────
