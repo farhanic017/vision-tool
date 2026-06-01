@@ -1028,18 +1028,39 @@ def analyze(file_path, prompt="", model=None):
     skipped = before - len(strategies)
     if skipped:
         print(f"KEYS: Skipped {skipped}/{before} backends (missing API key)", file=sys.stderr, flush=True)
-    print(f"KEYS: Trying {len(strategies)} backends in parallel", file=sys.stderr, flush=True)
+    print(f"KEYS: {len(strategies)} backends available", file=sys.stderr, flush=True)
 
     if not strategies:
         raise RuntimeError("No backends available — configure at least one API key (python setup.py)")
 
-    # Fire ALL backends in parallel — first success wins, cancel rest
-    PER_CALL_TIMEOUT = 12  # seconds per individual backend
-    TOTAL_TIMEOUT = 25     # seconds for entire operation
+    PER_CALL_TIMEOUT = 12
+    TOTAL_TIMEOUT = 25
+    FAST_TIMEOUT = 5
     last_error = ""
 
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(strategies))
-    futs = {pool.submit(lambda f=fn, n=name: (n, _call_with_timeout(f, PER_CALL_TIMEOUT))): name for name, fn in strategies}
+    # Phase 1: Fast path — try first backends solo (Gemini responds in 1-5s)
+    # Try up to 2 strategies solo before falling back to parallel fire
+    for name, fn in strategies[:2]:
+        try:
+            text = _call_with_timeout(fn, FAST_TIMEOUT)
+            if text and text.strip():
+                print(f"  {name}: OK", file=sys.stderr, flush=True)
+                return text
+        except Exception as e:
+            msg = str(e)
+            if hasattr(e, "code"):
+                msg = f"HTTP {e.code}"
+            last_error = msg
+            print(f"  {name}: FAILED ({msg})", file=sys.stderr, flush=True)
+
+    # Phase 2: Fallback — fire remaining backends in parallel
+    remaining = strategies[2:]
+    if not remaining:
+        raise RuntimeError(f"All vision backends failed. Last error: {last_error}")
+
+    print(f"FALLBACK: {len(remaining)} backends in parallel", file=sys.stderr, flush=True)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(remaining))
+    futs = {pool.submit(lambda f=fn, n=name: (n, _call_with_timeout(f, PER_CALL_TIMEOUT))): name for name, fn in remaining}
     try:
         for fut in concurrent.futures.as_completed(futs, timeout=TOTAL_TIMEOUT):
             name = futs[fut]
