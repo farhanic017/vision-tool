@@ -205,7 +205,7 @@ Then add to your MCP config:
 }
 ```
 
-## Backend chain (22 models)
+## Backend chain (23 models)
 
 | # | Model | Provider | Cost |
 |---|-------|----------|------|
@@ -231,6 +231,7 @@ Then add to your MCP config:
 | 20 | HF Qwen3-VL-8B | HuggingFace Inference Providers | Free tier |
 | 21 | Mistral pixtral-large | Mistral AI | Free tier |
 | 22 | Fireworks Llama 3.2 90B Vision | Fireworks AI | Free tier |
+| 23 | ZAI Glm-4.5-Flash | Zhipu AI (Z.AI) | Free tier |
 
 ## Troubleshooting
 

@@ -10,5 +10,6 @@
   "GROQ_API_KEY": "",
   "HF_TOKEN": "",
   "FIREWORKS_API_KEY": "",
+  "ZAI_API_KEY": "",
   "DEFAULT_MODEL": ""
 }

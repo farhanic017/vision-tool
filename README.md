@@ -6,13 +6,13 @@
 
 vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
-images and videos by routing them through **22 external vision backends**.
+images and videos by routing them through **23 external vision backends**.
 
 ## Features
 
 - **Images** — PNG, JPG, WebP, BMP, animated GIF
 - **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
-- **22 fallback backends** — Gemini first, then Azure, Groq, HF, Mistral, Fireworks all in parallel
+- **23 fallback backends** — Gemini first, then Azure, Groq, HF, Mistral, Fireworks, ZAI all in parallel
 - **Full parallel fire** — ALL backends run simultaneously, first success wins, rest cancelled
 - **Fast — typical analysis in 2-5s**, worst case ~19s (no backends available)
 - **Smart file search** — checks direct path → known user dirs → shallow recursive scan
@@ -121,6 +121,7 @@ Google Gemini models are tried **first** (2 fast attempts at 8s each). All remai
 | 20 | HF Qwen3-VL-8B | HuggingFace Inference Providers | Free tier |
 | 21 | Mistral pixtral-large | Mistral AI | Free tier |
 | 22 | Fireworks Llama 3.2 90B Vision | Fireworks AI | Free tier |
+| 23 | ZAI Glm-4.5-Flash | Zhipu AI (Z.AI) | Free tier |
 
 > First 2 backends tried sequentially (8s timeout each), then rest fire in parallel (12s timeout each) — first success cancels all remaining. Total operation timeout: 25s.
 > Only backends with configured API keys are launched. Missing keys are skipped instantly.
@@ -158,6 +159,7 @@ You need at least **one** of these:
 | **Mistral AI API key** | https://console.mistral.ai/api-keys | Mistral pixtral-large (free tier) |
 | **HuggingFace token** | https://huggingface.co/settings/tokens | HF Qwen3-VL (free tier) |
 | **Fireworks AI API key** | https://fireworks.ai/api-keys | Fireworks Llama 3.2 90B Vision (free tier) |
+| **Zhipu AI (Z.AI) key** | https://z.ai | ZAI Glm-4.5-Flash (free tier) |
 | **Cloudflare API key** | https://dash.cloudflare.com/profile/api-tokens | Cloudflare Workers AI (free tier, for --model flag) |
 | **OpenRouter API key** | https://openrouter.ai/keys | Multi-model access (free + paid) |
 
@@ -508,6 +510,7 @@ User: "What's in this image?"  or  "describe this naturally"
     ☆ HuggingFace Qwen3-VL
     ☆ Mistral pixtral-large
     ☆ Fireworks Llama 3.2 90B Vision
+    ☆ ZAI Glm-4.5-Flash
         │
         ▼
   First success wins → rest cancelled

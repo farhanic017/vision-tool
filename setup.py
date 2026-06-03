@@ -118,7 +118,7 @@ def securesave(config):
     PROVIDER_ENV_KEYS = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY",
                          "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY",
                          "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY",
-                         "HF_TOKEN", "FIREWORKS_API_KEY", "DEFAULT_MODEL"]
+                         "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY", "DEFAULT_MODEL"]
     for k in PROVIDER_ENV_KEYS:
         env_val = os.environ.get(k, "")
         if env_val and not config.get(k):
@@ -245,6 +245,7 @@ PROVIDER_LABELS = [
     ("GROQ_API_KEY", "Groq"),
     ("HF_TOKEN", "HuggingFace"),
     ("FIREWORKS_API_KEY", "Fireworks AI"),
+    ("ZAI_API_KEY", "Zhipu AI (Z.AI)"),
 ]
 
 
@@ -343,6 +344,11 @@ def enter_keys():
         default=existing.get("FIREWORKS_API_KEY", ""),
         secret=True, optional=True,
     )
+    zai_key = prompt(
+        "Zhipu AI (Z.AI) API key",
+        default=existing.get("ZAI_API_KEY", ""),
+        secret=True, optional=True,
+    )
 
     print()
     print(bold("  Validating..."))
@@ -385,6 +391,7 @@ def enter_keys():
         "GROQ_API_KEY": groq_key,
         "HF_TOKEN": hf_token,
         "FIREWORKS_API_KEY": fireworks_key,
+        "ZAI_API_KEY": zai_key,
         "DEFAULT_MODEL": default_model,
     }
     securesave(config)
@@ -395,7 +402,7 @@ def enter_keys():
             try:
                 with open(verify_path) as f:
                     saved = json.load(f)
-                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY") if saved.get(k, "")]
+                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY") if saved.get(k, "")]
                 if len(saved_keys) > 0:
                     verified = True
                     print(f"  {green('\u2714')} Keys verified: {', '.join(saved_keys)}")
@@ -462,7 +469,7 @@ def setup_later():
         except (json.JSONDecodeError, IOError):
             pass
 
-    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY"]
+    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY"]
     has_keys = any(existing.get(k) for k in all_provider_keys)
     if has_keys:
         print(yellow("  Keys already configured — nothing to skip."))
@@ -488,6 +495,7 @@ def setup_later():
     print("    Groq:         https://console.groq.com/keys  (free tier)")
     print("    HuggingFace:  https://huggingface.co/settings/tokens")
     print("    Fireworks AI: https://fireworks.ai/api-keys")
+    print("    Zhipu AI:     https://z.ai (Z.AI API)")
     print()
 
 

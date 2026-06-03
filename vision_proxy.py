@@ -189,7 +189,7 @@ CONFIG_PATH = os.path.join(_APPDATA_DIR, "config.json")
 CONFIG_PATH_LOCAL = os.path.join(_SCRIPT_DIR, "config.json")
 
 
-ALL_PROVIDER_KEYS = ["CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "GROQ_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "FIREWORKS_API_KEY"]
+ALL_PROVIDER_KEYS = ["CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "GROQ_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "FIREWORKS_API_KEY", "ZAI_API_KEY"]
 
 
 def _find_config():
@@ -239,6 +239,7 @@ def load_config():
         "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
         "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
         "FIREWORKS_API_KEY": os.environ.get("FIREWORKS_API_KEY"),
+        "ZAI_API_KEY": os.environ.get("ZAI_API_KEY"),
         "DEFAULT_MODEL": os.environ.get("VISION_MODEL"),
     }
     cfg_path = _find_config()
@@ -294,6 +295,8 @@ def _has_key(name):
         return bool(CFG.get("FIREWORKS_API_KEY"))
     if "Gemini" in name or "gemini" in name or "Google" in name:
         return bool(CFG.get("GEMINI_API_KEY"))
+    if "Zai" in name or "zai" in name or "Z.AI" in name or "ZAI" in name:
+        return bool(CFG.get("ZAI_API_KEY"))
     return False
 
 
@@ -305,6 +308,7 @@ def _print_available_keys():
         ("HF_TOKEN", "HuggingFace"),
         ("MISTRAL_API_KEY", "Mistral AI"),
         ("FIREWORKS_API_KEY", "Fireworks AI"),
+        ("ZAI_API_KEY", "Zhipu AI"),
         ("GEMINI_API_KEY", "Google Gemini"),
     ]
     parts = []
@@ -957,6 +961,8 @@ def _build_strategies(kind, *args, prompt=""):
             ("\u2606 Mistral pixtral-large", lambda: call_mistral_multi(frames, prompt, "pixtral-large-latest")),
             # Fireworks AI
             ("\u2606 Fireworks Llama 3.2 90B Vision", lambda: call_fireworks_multi(frames, prompt, "accounts/fireworks/models/llama-v3p2-90b-vision-instruct")),
+            # Zhipu AI
+            ("\u2606 ZAI Glm-4.5-Flash", lambda: call_zai_multi(frames, prompt, "glm-4.5-flash")),
         ]
     else:
         img_b64, mime = args
@@ -989,6 +995,8 @@ def _build_strategies(kind, *args, prompt=""):
             ("\u2606 Mistral pixtral-large", lambda: call_mistral(img_b64, mime, prompt, "pixtral-large-latest")),
             # Fireworks AI
             ("\u2606 Fireworks Llama 3.2 90B Vision", lambda: call_fireworks(img_b64, mime, prompt, "accounts/fireworks/models/llama-v3p2-90b-vision-instruct")),
+            # Zhipu AI
+            ("\u2606 ZAI Glm-4.5-Flash", lambda: call_zai(img_b64, mime, prompt, "glm-4.5-flash")),
         ]
     return s
 
@@ -1002,6 +1010,7 @@ def _insert_model_strategies(strategies, model, kind, *args, prompt=""):
         "mistral": (call_mistral, call_mistral_multi),
         "fireworks": (call_fireworks, call_fireworks_multi),
         "gemini": (call_gemini, call_gemini_multi),
+        "zai": (call_zai, call_zai_multi),
     }
     is_vid = kind == "vid"
     for prov, native_model in reversed(get_providers_for_model(model)):
@@ -1168,6 +1177,8 @@ def _list_models():
         ("\u2606 Mistral pixtral-large",     "MISTRAL_API_KEY"),
         # Fireworks AI
         ("\u2606 Fireworks Llama 3.2 90B Vision", "FIREWORKS_API_KEY"),
+        # Zhipu AI
+        ("\u2606 ZAI Glm-4.5-Flash",              "ZAI_API_KEY"),
         # Google Gemini
         ("\u2606 Gemini 2.5 Flash",           "GEMINI_API_KEY"),
         ("\u2606 Gemini 3 Flash Preview",     "GEMINI_API_KEY"),
@@ -1187,7 +1198,7 @@ def _list_models():
 
     print()
     print("Keys configured:")
-    for key in ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY"]:
+    for key in ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY"]:
         v = CFG.get(key, "")
         val = v[:20] + "..." if v and len(v) > 20 else (v or "(not set)")
         print(f"  {key:<25} {val}")
