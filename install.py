@@ -154,7 +154,7 @@ def step_setup(target_dir):
                 try:
                     with open(p) as f:
                         cfg = json.load(f)
-                    if any(cfg.get(k, "") for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")):
+                    if any(cfg.get(k, "") for k in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY")):
                         found = True
                         break
                 except (json.JSONDecodeError, IOError):
@@ -511,7 +511,7 @@ def main():
                 try:
                     with open(p) as f:
                         cfg = json.load(f)
-                    has_keys = any(v for v in (cfg.get("GEMINI_API_KEY"), cfg.get("OPENROUTER_API_KEY")))
+                    has_keys = any(v for v in (cfg.get("GEMINI_API_KEY"), cfg.get("CLOUDFLARE_API_KEY")))
                     if has_keys:
                         break
                 except (json.JSONDecodeError, IOError):

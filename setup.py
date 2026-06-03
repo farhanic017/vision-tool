@@ -115,8 +115,8 @@ def _save_to(path, config):
 
 def securesave(config):
     # Merge missing keys from environment variables (never overwrite explicit values)
-    PROVIDER_ENV_KEYS = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY",
-                         "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY",
+    PROVIDER_ENV_KEYS = ["GEMINI_API_KEY", "CLOUDFLARE_API_KEY",
+                         "AZUREAI_API_KEY", "AZUREAI_ENDPOINT",
                          "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY",
                          "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY", "DEFAULT_MODEL"]
     for k in PROVIDER_ENV_KEYS:
@@ -235,11 +235,9 @@ def test_openrouter(key):
 
 PROVIDER_LABELS = [
     ("GEMINI_API_KEY", "Google Gemini"),
-    ("OPENROUTER_API_KEY", "OpenRouter"),
     ("CLOUDFLARE_API_KEY", "Cloudflare"),
     ("AZUREAI_API_KEY", "Azure AI Foundry"),
     ("AZUREAI_ENDPOINT", "Azure AI Foundry endpoint"),
-    ("OPENAI_API_KEY", "OpenAI"),
     ("ANTHROPIC_API_KEY", "Anthropic"),
     ("MISTRAL_API_KEY", "Mistral AI"),
     ("GROQ_API_KEY", "Groq"),
@@ -294,11 +292,6 @@ def enter_keys():
         default=existing.get("GEMINI_API_KEY", ""),
         secret=True, optional=True,
     )
-    openrouter_key = prompt(
-        "OpenRouter API key (sk-or-...)",
-        default=existing.get("OPENROUTER_API_KEY", ""),
-        secret=True, optional=True,
-    )
     cloudflare_key = prompt(
         "Cloudflare Workers AI API key (cfut_...)",
         default=existing.get("CLOUDFLARE_API_KEY", ""),
@@ -312,11 +305,6 @@ def enter_keys():
     azureai_key = prompt(
         "Azure AI Foundry API key",
         default=existing.get("AZUREAI_API_KEY", ""),
-        secret=True, optional=True,
-    )
-    openai_key = prompt(
-        "OpenAI API key (sk-...)",
-        default=existing.get("OPENAI_API_KEY", ""),
         secret=True, optional=True,
     )
     anthropic_key = prompt(
@@ -353,13 +341,12 @@ def enter_keys():
     print()
     print(bold("  Validating..."))
     gemini_ok = test_gemini(gemini_key) if gemini_key else False
-    openrouter_ok = test_openrouter(openrouter_key) if openrouter_key else False
     cloudflare_ok = test_cloudflare(cloudflare_key)
     azureai_ok = test_azureai(azureai_key, azureai_endpoint)
     groq_ok = test_groq(groq_key)
     hf_ok = test_huggingface(hf_token)
 
-    for name, ok in [("Gemini", gemini_ok), ("OpenRouter", openrouter_ok),
+    for name, ok in [("Gemini", gemini_ok),
                       ("Cloudflare", cloudflare_ok), ("Azure AI Foundry", azureai_ok),
                       ("Groq", groq_ok), ("HuggingFace", hf_ok)]:
         if ok:
@@ -367,7 +354,7 @@ def enter_keys():
         else:
             print(f"    {yellow(f'{name} key not verified (saved but may not work)')}")
 
-    if not any([gemini_ok, openrouter_ok, cloudflare_ok, azureai_ok, groq_ok, hf_ok]):
+    if not any([gemini_ok, cloudflare_ok, azureai_ok, groq_ok, hf_ok]):
         print()
         print(yellow("  No key was confirmed working. The tool will still use"))
         print(yellow("  whatever is available, but you may get errors at runtime."))
@@ -381,11 +368,9 @@ def enter_keys():
 
     config = {
         "GEMINI_API_KEY": gemini_key,
-        "OPENROUTER_API_KEY": openrouter_key,
         "CLOUDFLARE_API_KEY": cloudflare_key,
         "AZUREAI_API_KEY": azureai_key,
         "AZUREAI_ENDPOINT": azureai_endpoint,
-        "OPENAI_API_KEY": openai_key,
         "ANTHROPIC_API_KEY": anthropic_key,
         "MISTRAL_API_KEY": mistral_key,
         "GROQ_API_KEY": groq_key,
@@ -402,7 +387,7 @@ def enter_keys():
             try:
                 with open(verify_path) as f:
                     saved = json.load(f)
-                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY") if saved.get(k, "")]
+                saved_keys = [k for k in ("GEMINI_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY") if saved.get(k, "")]
                 if len(saved_keys) > 0:
                     verified = True
                     print(f"  {green('\u2714')} Keys verified: {', '.join(saved_keys)}")
@@ -469,7 +454,7 @@ def setup_later():
         except (json.JSONDecodeError, IOError):
             pass
 
-    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY"]
+    all_provider_keys = ["GEMINI_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY"]
     has_keys = any(existing.get(k) for k in all_provider_keys)
     if has_keys:
         print(yellow("  Keys already configured — nothing to skip."))
@@ -486,10 +471,8 @@ def setup_later():
     print()
     print("  Get your free keys at:")
     print("    Gemini:       https://aistudio.google.com/apikey")
-    print("    OpenRouter:   https://openrouter.ai/keys  (free tier)")
     print("    Cloudflare:   https://dash.cloudflare.com/profile/api-tokens  (Workers AI)")
     print("    Azure AI:     https://ai.azure.com  (AI Foundry portal)")
-    print("    OpenAI:       https://platform.openai.com/api-keys")
     print("    Anthropic:    https://console.anthropic.com/settings/keys")
     print("    Mistral:      https://console.mistral.ai/api-keys")
     print("    Groq:         https://console.groq.com/keys  (free tier)")

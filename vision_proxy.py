@@ -31,7 +31,7 @@ Custom model (auto-routes to best provider):
   Set VISION_MODEL env var or DEFAULT_MODEL in config.json for persistence.
 
 Supported provider keys (set via setup.py or env vars):
-  GEMINI_API_KEY | OPENROUTER_API_KEY | CLOUDFLARE_API_KEY | AZUREAI_API_KEY | AZUREAI_ENDPOINT | OPENAI_API_KEY | ANTHROPIC_API_KEY | MISTRAL_API_KEY | GROQ_API_KEY | HF_TOKEN
+  GEMINI_API_KEY | CLOUDFLARE_API_KEY | AZUREAI_API_KEY | AZUREAI_ENDPOINT | ANTHROPIC_API_KEY | MISTRAL_API_KEY | GROQ_API_KEY | HF_TOKEN | FIREWORKS_API_KEY | ZAI_API_KEY
 
 Usage:
   python vision_proxy.py <image_or_video_path> [prompt text...] [--model NAME]
@@ -189,14 +189,14 @@ CONFIG_PATH = os.path.join(_APPDATA_DIR, "config.json")
 CONFIG_PATH_LOCAL = os.path.join(_SCRIPT_DIR, "config.json")
 
 
-ALL_PROVIDER_KEYS = ["CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "GROQ_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "FIREWORKS_API_KEY", "ZAI_API_KEY"]
+ALL_PROVIDER_KEYS = ["CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "GROQ_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "GEMINI_API_KEY", "FIREWORKS_API_KEY", "ZAI_API_KEY"]
 
 
 def _find_config():
-    if os.path.isfile(CONFIG_PATH_LOCAL):
-        return CONFIG_PATH_LOCAL
     if os.path.isfile(CONFIG_PATH):
         return CONFIG_PATH
+    if os.path.isfile(CONFIG_PATH_LOCAL):
+        return CONFIG_PATH_LOCAL
     return CONFIG_PATH
 
 
@@ -219,11 +219,6 @@ def save_config(config):
     except Exception:
         with open(CONFIG_PATH, "w") as f:
             json.dump(config, f)
-    try:
-        with open(CONFIG_PATH_LOCAL, "w") as f:
-            json.dump(config, f)
-    except Exception:
-        pass
 
 
 def load_config():
@@ -235,8 +230,6 @@ def load_config():
         "HF_TOKEN": os.environ.get("HF_TOKEN"),
         "MISTRAL_API_KEY": os.environ.get("MISTRAL_API_KEY"),
         "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
-        "OPENROUTER_API_KEY": os.environ.get("OPENROUTER_API_KEY"),
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
         "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
         "FIREWORKS_API_KEY": os.environ.get("FIREWORKS_API_KEY"),
         "ZAI_API_KEY": os.environ.get("ZAI_API_KEY"),
@@ -260,7 +253,6 @@ def load_config():
             "  Run setup.py to configure:  python setup.py\n"
             "  Or set environment variables (any one is enough):\n"
             "    $env:GEMINI_API_KEY='...'            (aistudio.google.com/apikey)\n"
-            "    $env:OPENROUTER_API_KEY='sk-or-...'  (openrouter.ai/keys)\n"
             "    $env:CLOUDFLARE_API_KEY='cfut_...'  (cloudflare.com, Workers AI)\n"
             "    $env:AZUREAI_API_KEY='...'           (Azure AI Foundry)\n"
             "    $env:AZUREAI_ENDPOINT='https://...'  (Azure AI Foundry endpoint)\n"
@@ -268,7 +260,7 @@ def load_config():
             "    $env:GROQ_API_KEY='gsk_...'          (groq.com, free tier)\n"
             "    $env:HF_TOKEN='hf_...'               (huggingface.co/settings/tokens)\n"
             "    $env:FIREWORKS_API_KEY='fw_...'       (fireworks.ai/api-keys)\n"
-            "    $env:OPENAI_API_KEY='sk-...'         (platform.openai.com/api-keys)\n"
+            "    $env:ZAI_API_KEY='...'                (z.ai, Zhipu AI)\n"
             "    $env:ANTHROPIC_API_KEY='sk-ant-...'  (console.anthropic.com/settings/keys)\n"
             "    $env:VISION_MODEL='model-name'    (optional default model)"
         )
@@ -571,7 +563,17 @@ def call_azureai(b64data, mime, prompt, model):
         data=json.dumps(payload).encode(),
         headers=_azureai_headers(),
     )
-    resp = urllib.request.urlopen(req, timeout=30)
+    try:
+        resp = urllib.request.urlopen(req, timeout=30)
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            base = CFG.get("AZUREAI_ENDPOINT", "")
+            if "services.ai.azure.com" in base:
+                raise RuntimeError(
+                    f"Azure endpoint uses 'services.ai.azure.com' but needs an Azure OpenAI "
+                    f"endpoint (https://{{name}}.openai.azure.com). Got: {base}"
+                )
+        raise
     return json.loads(resp.read())["choices"][0]["message"]["content"]
 
 
@@ -587,7 +589,17 @@ def call_azureai_multi(frames, prompt, model):
         data=json.dumps(payload).encode(),
         headers=_azureai_headers(),
     )
-    resp = urllib.request.urlopen(req, timeout=30)
+    try:
+        resp = urllib.request.urlopen(req, timeout=30)
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            base = CFG.get("AZUREAI_ENDPOINT", "")
+            if "services.ai.azure.com" in base:
+                raise RuntimeError(
+                    f"Azure endpoint uses 'services.ai.azure.com' but needs an Azure OpenAI "
+                    f"endpoint (https://{{name}}.openai.azure.com). Got: {base}"
+                )
+        raise
     return json.loads(resp.read())["choices"][0]["message"]["content"]
 
 
@@ -1104,10 +1116,10 @@ def analyze(file_path, prompt="", model=None):
 
     PER_CALL_TIMEOUT = 12
     TOTAL_TIMEOUT = 25
-    FAST_TIMEOUT = 8
+    FAST_TIMEOUT = 4
     last_error = ""
 
-    for name, fn in strategies[:2]:
+    for name, fn in strategies[:1]:
         try:
             text = _call_with_timeout(fn, FAST_TIMEOUT)
             if text and text.strip():
@@ -1198,7 +1210,7 @@ def _list_models():
 
     print()
     print("Keys configured:")
-    for key in ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY"]:
+    for key in ["GEMINI_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY"]:
         v = CFG.get(key, "")
         val = v[:20] + "..." if v and len(v) > 20 else (v or "(not set)")
         print(f"  {key:<25} {val}")

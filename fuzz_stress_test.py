@@ -342,7 +342,7 @@ def test_config_corruption():
             ("keys as int", '{"GEMINI_API_KEY": 42}'),
             ("keys as list", '{"GEMINI_API_KEY": ["key1", "key2"]}'),
             ("keys as object", '{"GEMINI_API_KEY": {"nested": "key"}}'),
-            ("extra fields", '{"GEMINI_API_KEY": "x", "OPENROUTER_API_KEY": "y", "MALICIOUS": "rm -rf /"}'),
+            ("extra fields", '{"GEMINI_API_KEY": "x", "CLOUDFLARE_API_KEY": "y", "MALICIOUS": "rm -rf /"}'),
             ("windows path sep", '{"GEMINI_API_KEY": "C:\\\\Users\\\\test\\\\key"}'),
             ("unicode key values", '{"GEMINI_API_KEY": "\\ud83d\\ude00\\n\\t"}'),
         ]
