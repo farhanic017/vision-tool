@@ -25,7 +25,6 @@ import urllib.error
 import getpass
 import subprocess
 
-# Import shared config path/save from vision_proxy
 _vp_script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _vp_script_dir)
 import vision_proxy as _vp
@@ -63,11 +62,8 @@ def prompt(label, default="", secret=False, optional=False):
                 try:
                     val = getpass.getpass(f"  {label}{d}: ").strip()
                 except Exception:
-                    # getpass can fail on some Windows terminals
-                    # fall back to input (shows chars but works)
                     val = input(f"  {label}{d}: ").strip()
             else:
-                # Non-tty stdin (e.g. piped input)
                 try:
                     val = input(f"  {label}{d}: ").strip()
                 except EOFError:
@@ -95,7 +91,6 @@ def confirm(label, default=True):
 
 
 def _save_to(path, config):
-    """Write config atomically to a single path."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
     except Exception:
@@ -113,16 +108,13 @@ def _save_to(path, config):
 
 
 def securesave(config):
-    """Save config to persistent AppData path + local fallback."""
     _save_to(CONFIG_PATH, config)
     _save_to(CONFIG_PATH_LOCAL, config)
-
-    # Lock permissions (best-effort) on primary path
     target = CONFIG_PATH
     if os.name == "nt":
         try:
             user = os.environ.get("USERNAME", "")
-            r = subprocess.run(
+            subprocess.run(
                 f'icacls "{target}" /grant "{user}:(F)" /inheritance:e',
                 shell=True, capture_output=True, timeout=10,
             )
@@ -135,27 +127,12 @@ def securesave(config):
             pass
 
 
-def test_gemini(key):
+def test_cloudflare(key):
     if not key:
         return False
     try:
         req = urllib.request.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}",
-            data=json.dumps({"contents": [{"parts": [{"text": "Say OK"}]}]}).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status == 200
-    except Exception:
-        return False
-
-
-def test_openrouter(key):
-    if not key:
-        return False
-    try:
-        req = urllib.request.Request(
-            "https://openrouter.ai/api/v1/models",
+            "https://api.cloudflare.com/client/v4/accounts/c782ccfebd6eb876a9ef860d61588da7/ai/v1/models/search?per_page=1",
             headers={"Authorization": f"Bearer {key}"},
         )
         resp = urllib.request.urlopen(req, timeout=15)
@@ -164,13 +141,18 @@ def test_openrouter(key):
         return False
 
 
-def test_openai(key):
-    if not key:
+def test_azureai(key, endpoint):
+    if not key or not endpoint:
         return False
     try:
+        base = endpoint.rstrip("/")
+        url = f"{base}/openai/deployments?api-version=2024-10-21"
         req = urllib.request.Request(
-            "https://api.openai.com/v1/models",
-            headers={"Authorization": f"Bearer {key}"},
+            url,
+            headers={
+                "api-key": key,
+                "Content-Type": "application/json",
+            },
         )
         resp = urllib.request.urlopen(req, timeout=15)
         return resp.status == 200
@@ -178,41 +160,16 @@ def test_openai(key):
         return False
 
 
-def test_anthropic(key):
+def test_groq(key):
     if not key:
         return False
     try:
         req = urllib.request.Request(
-            "https://api.anthropic.com/v1/models",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-        )
-        resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status == 200
-    except Exception:
-        return False
-
-
-def test_freeai(key):
-    if not key:
-        return False
-    try:
-        req = urllib.request.Request(
-            "https://api.free.ai/v1/models",
-            headers={"Authorization": f"Bearer {key}"},
-        )
-        resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status == 200
-    except Exception:
-        return False
-
-
-def test_moondream(key):
-    if not key:
-        return False
-    try:
-        req = urllib.request.Request(
-            "https://api.moondream.ai/v1/models",
-            headers={"X-Moondream-Auth": key},
+            "https://api.groq.com/openai/v1/models",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "User-Agent": "vision-tool/1.0",
+            },
         )
         resp = urllib.request.urlopen(req, timeout=15)
         return resp.status == 200
@@ -234,19 +191,48 @@ def test_huggingface(key):
         return False
 
 
+def test_gemini(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://generativelanguage.googleapis.com/v1beta/models?key=" + key,
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def test_openrouter(key):
+    if not key:
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return resp.status == 200
+    except Exception:
+        return False
+
+
 PROVIDER_LABELS = [
-    ("GEMINI_API_KEY", "Gemini"),
+    ("GEMINI_API_KEY", "Google Gemini"),
     ("OPENROUTER_API_KEY", "OpenRouter"),
-    ("FREEAI_API_KEY", "Free.ai"),
-    ("MOONDREAM_API_KEY", "Moondream"),
-    ("HF_TOKEN", "HuggingFace"),
+    ("CLOUDFLARE_API_KEY", "Cloudflare"),
+    ("AZUREAI_API_KEY", "Azure AI Foundry"),
+    ("AZUREAI_ENDPOINT", "Azure AI Foundry endpoint"),
     ("OPENAI_API_KEY", "OpenAI"),
     ("ANTHROPIC_API_KEY", "Anthropic"),
+    ("MISTRAL_API_KEY", "Mistral AI"),
+    ("GROQ_API_KEY", "Groq"),
+    ("HF_TOKEN", "HuggingFace"),
 ]
 
 
 def show_keys():
-    """Show current key status."""
     existing = {}
     cfg_path = _vp._find_config()
     if os.path.isfile(cfg_path):
@@ -264,11 +250,7 @@ def show_keys():
     print(f"  {'Default model':22s} {cyan(mdl) if mdl else dim('(auto-fallback chain)')}")
 
 
-# ── key entry flow ────────────────────────────────────────────────────────
-
-
 def enter_keys():
-    """Prompt user for API keys, validate, and save."""
     existing = {}
     cfg_path = _vp._find_config()
     if os.path.isfile(cfg_path):
@@ -285,23 +267,48 @@ def enter_keys():
     print("  Enter at least one API key (press Enter to keep existing / skip).")
     print()
     gemini_key = prompt(
-        "Gemini API key",
+        "Gemini API key (from Google AI Studio)",
         default=existing.get("GEMINI_API_KEY", ""),
         secret=True, optional=True,
     )
     openrouter_key = prompt(
-        "OpenRouter API key",
+        "OpenRouter API key (sk-or-...)",
         default=existing.get("OPENROUTER_API_KEY", ""),
         secret=True, optional=True,
     )
-    freeai_key = prompt(
-        "Free.ai API key",
-        default=existing.get("FREEAI_API_KEY", ""),
+    cloudflare_key = prompt(
+        "Cloudflare Workers AI API key (cfut_...)",
+        default=existing.get("CLOUDFLARE_API_KEY", ""),
         secret=True, optional=True,
     )
-    moondream_key = prompt(
-        "Moondream API key",
-        default=existing.get("MOONDREAM_API_KEY", ""),
+    azureai_endpoint = prompt(
+        "Azure AI Foundry endpoint (https://...)",
+        default=existing.get("AZUREAI_ENDPOINT", ""),
+        secret=False, optional=True,
+    )
+    azureai_key = prompt(
+        "Azure AI Foundry API key",
+        default=existing.get("AZUREAI_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    openai_key = prompt(
+        "OpenAI API key (sk-...)",
+        default=existing.get("OPENAI_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    anthropic_key = prompt(
+        "Anthropic API key (sk-ant-...)",
+        default=existing.get("ANTHROPIC_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    mistral_key = prompt(
+        "Mistral AI API key",
+        default=existing.get("MISTRAL_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    groq_key = prompt(
+        "Groq API key (gsk_...)",
+        default=existing.get("GROQ_API_KEY", ""),
         secret=True, optional=True,
     )
     hf_token = prompt(
@@ -309,37 +316,25 @@ def enter_keys():
         default=existing.get("HF_TOKEN", ""),
         secret=True, optional=True,
     )
-    openai_key = prompt(
-        "OpenAI API key",
-        default=existing.get("OPENAI_API_KEY", ""),
-        secret=True, optional=True,
-    )
-    anthropic_key = prompt(
-        "Anthropic API key",
-        default=existing.get("ANTHROPIC_API_KEY", ""),
-        secret=True, optional=True,
-    )
 
     print()
     print(bold("  Validating..."))
-    gemini_ok = test_gemini(gemini_key)
-    openrouter_ok = test_openrouter(openrouter_key)
-    freeai_ok = test_freeai(freeai_key)
-    moondream_ok = test_moondream(moondream_key)
+    gemini_ok = test_gemini(gemini_key) if gemini_key else False
+    openrouter_ok = test_openrouter(openrouter_key) if openrouter_key else False
+    cloudflare_ok = test_cloudflare(cloudflare_key)
+    azureai_ok = test_azureai(azureai_key, azureai_endpoint)
+    groq_ok = test_groq(groq_key)
     hf_ok = test_huggingface(hf_token)
-    openai_ok = test_openai(openai_key)
-    anthropic_ok = test_anthropic(anthropic_key)
 
     for name, ok in [("Gemini", gemini_ok), ("OpenRouter", openrouter_ok),
-                      ("Free.ai", freeai_ok), ("Moondream", moondream_ok),
-                      ("HuggingFace", hf_ok),
-                      ("OpenAI", openai_ok), ("Anthropic", anthropic_ok)]:
+                      ("Cloudflare", cloudflare_ok), ("Azure AI Foundry", azureai_ok),
+                      ("Groq", groq_ok), ("HuggingFace", hf_ok)]:
         if ok:
             print(f"    {green(f'{name} API key works')}")
         else:
             print(f"    {yellow(f'{name} key not verified (saved but may not work)')}")
 
-    if not any([gemini_ok, openrouter_ok, freeai_ok, moondream_ok, hf_ok, openai_ok, anthropic_ok]):
+    if not any([gemini_ok, openrouter_ok, cloudflare_ok, azureai_ok, groq_ok, hf_ok]):
         print()
         print(yellow("  No key was confirmed working. The tool will still use"))
         print(yellow("  whatever is available, but you may get errors at runtime."))
@@ -354,29 +349,31 @@ def enter_keys():
     config = {
         "GEMINI_API_KEY": gemini_key,
         "OPENROUTER_API_KEY": openrouter_key,
-        "FREEAI_API_KEY": freeai_key,
-        "MOONDREAM_API_KEY": moondream_key,
-        "HF_TOKEN": hf_token,
+        "CLOUDFLARE_API_KEY": cloudflare_key,
+        "AZUREAI_API_KEY": azureai_key,
+        "AZUREAI_ENDPOINT": azureai_endpoint,
         "OPENAI_API_KEY": openai_key,
         "ANTHROPIC_API_KEY": anthropic_key,
+        "MISTRAL_API_KEY": mistral_key,
+        "GROQ_API_KEY": groq_key,
+        "HF_TOKEN": hf_token,
         "DEFAULT_MODEL": default_model,
     }
     securesave(config)
 
-    # Verify save succeeded (check either path)
     verified = False
     for verify_path in (CONFIG_PATH, CONFIG_PATH_LOCAL):
         if os.path.isfile(verify_path):
             try:
                 with open(verify_path) as f:
                     saved = json.load(f)
-                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "FREEAI_API_KEY", "MOONDREAM_API_KEY", "HF_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY") if saved.get(k, "")]
+                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN") if saved.get(k, "")]
                 if len(saved_keys) > 0:
                     verified = True
-                    print(f"  {green('✔')} Keys verified: {', '.join(saved_keys)}")
+                    print(f"  {green('\u2714')} Keys verified: {', '.join(saved_keys)}")
                     break
             except (json.JSONDecodeError, IOError) as e:
-                print(f"  {yellow('⚠')} Save verification failed for {verify_path}: {e}")
+                print(f"  {yellow('\u26a0')} Save verification failed for {verify_path}: {e}")
 
     print()
     if verified:
@@ -391,15 +388,11 @@ def enter_keys():
     print()
 
 
-# ── option selector ────────────────────────────────────────────────────────
-
-
 def choose_option():
-    """Show 2-option selection at start of setup."""
     print()
-    print(bold("╔══════════════════════════════════════════════╗"))
-    print(bold("║      vision-tool  —  API Key Setup           ║"))
-    print(bold("╚══════════════════════════════════════════════╝"))
+    print(bold("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557"))
+    print(bold("\u2551      vision-tool  \u2014  API Key Setup           \u2551"))
+    print(bold("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"))
     print()
     print("vision-tool needs at least one API key to analyse images & videos.")
     print("Keys are stored in config.json (gitignored, locked to you only).")
@@ -412,7 +405,7 @@ def choose_option():
     print(bold("  Select an option:"))
     print()
     print(bold("  1)") + "  Enter API key now")
-    print(dim("     Provide any provider key (Gemini, OpenRouter, OpenAI, Anthropic)."))
+    print(dim("     Provide any provider key (Gemini, OpenRouter, Cloudflare, Azure, etc)."))
     print(dim("     Validated and saved securely with locked permissions."))
     print()
     print(bold("  2)") + "  Add later")
@@ -430,7 +423,6 @@ def choose_option():
 
 
 def setup_later():
-    """Create blank config with placeholders and warn user."""
     existing = {}
     cfg_path = _vp._find_config()
     if os.path.isfile(cfg_path):
@@ -442,7 +434,7 @@ def setup_later():
         except (json.JSONDecodeError, IOError):
             pass
 
-    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "FREEAI_API_KEY", "MOONDREAM_API_KEY", "HF_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN"]
     has_keys = any(existing.get(k) for k in all_provider_keys)
     if has_keys:
         print(yellow("  Keys already configured — nothing to skip."))
@@ -458,35 +450,30 @@ def setup_later():
     print(bold(f"    python {os.path.join(_vp_script_dir, 'setup.py')} --add-key"))
     print()
     print("  Get your free keys at:")
-    print("    Gemini:      https://aistudio.google.com/apikey")
-    print("    OpenRouter:   https://openrouter.ai/keys")
-    print("    Free.ai:      https://free.ai/signup/  (30K tokens/day)")
-    print("    Moondream:    https://console.moondream.ai  (5K/day)")
-    print("    HuggingFace:  https://huggingface.co/settings/tokens")
+    print("    Gemini:       https://aistudio.google.com/apikey")
+    print("    OpenRouter:   https://openrouter.ai/keys  (free tier)")
+    print("    Cloudflare:   https://dash.cloudflare.com/profile/api-tokens  (Workers AI)")
+    print("    Azure AI:     https://ai.azure.com  (AI Foundry portal)")
     print("    OpenAI:       https://platform.openai.com/api-keys")
-    print("    Anthropic:    https://console.anthropic.com/keys")
+    print("    Anthropic:    https://console.anthropic.com/settings/keys")
+    print("    Mistral:      https://console.mistral.ai/api-keys")
+    print("    Groq:         https://console.groq.com/keys  (free tier)")
+    print("    HuggingFace:  https://huggingface.co/settings/tokens")
     print()
-
-
-# ── main ─────────────────────────────────────────────────────────────────
 
 
 def main():
     _vp._wrap_utf8()
-
     add_key_mode = "--add-key" in sys.argv
-
     if add_key_mode:
         print()
-        print(bold("╔══════════════════════════════════════════════╗"))
-        print(bold("║      vision-tool  —  Add API Key             ║"))
-        print(bold("╚══════════════════════════════════════════════╝"))
+        print(bold("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557"))
+        print(bold("\u2551      vision-tool  \u2014  Add API Key             \u2551"))
+        print(bold("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"))
         print()
         enter_keys()
         return
-
     choice = choose_option()
-
     if choice == "now":
         enter_keys()
     else:

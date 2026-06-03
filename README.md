@@ -12,7 +12,7 @@ images and videos by routing them through **18 external vision backends**.
 
 - **Images** — PNG, JPG, WebP, BMP, animated GIF
 - **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
-- **18 fallback backends** — Gemini first, then all configured backends in parallel
+- **20+ fallback backends** — Gemini first, then all configured backends in parallel
 - **Full parallel fire** — ALL backends run simultaneously, first success wins, rest cancelled
 - **Fast — typical analysis in 2-5s**, worst case ~19s (no backends available)
 - **Smart file search** — checks direct path → known user dirs → shallow recursive scan
@@ -99,29 +99,31 @@ Gemini models are tried **first** (fastest, most reliable). All other backends f
 
 | # | Tier | Model | Provider | Cost |
 |---|------|-------|----------|------|
-| 1 | ☆ | **Gemini 2.5 Flash** | Google (direct) | Free tier |
-| 2 | ☆ | Gemini 2.0 Flash | Google (direct) | Free tier |
-| 3 | ☆ | HF Qwen3-VL-8B | HuggingFace Inference | Free tier ($0.10/mo) |
-| 4 | ☆ | Free.ai InternVL 3 8B | Free.ai | Free (30K tokens/day) |
-| 5 | ☆ | Free.ai Molmo 7B | Free.ai | Free (30K tokens/day) |
-| 6 | ☆ | Moondream | Moondream | Free (5K/day) |
-| 7 | ☆ | Gemma 4 26B | OpenRouter | Free |
-| 8 | ☆ | NVIDIA Nemotron VL | OpenRouter | Free |
-| 9 | ☆ | Kimi K2.6 | OpenRouter | Free |
-| 10 | ☆ | Gemma 4 31B | OpenRouter | Free |
-| 11 | ☆ | NVIDIA Nemotron Omni | OpenRouter | Free |
-| 12 | ☆ | OpenRouter free router | OpenRouter | Free (any available model) |
-| 13 | ★ | **GPT-4o** | OpenRouter | Paid (~$0.01/image) |
-| 14 | ★ | GPT-4o-mini | OpenRouter | Cheap (~$0.001/image) |
-| 15 | ★ | Claude 3.5 Sonnet | OpenRouter | Paid |
-| 16 | ★ | Claude 3 Haiku | OpenRouter | Cheap |
-| 17 | ★ | Llama 3.2 90B Vision | OpenRouter | Paid |
-| 18 | ★ | Qwen VL 8B | OpenRouter | Cheap (~$0.0001/image) |
+| 1 | ☆ | **Gemini 2.5 Flash** | Google Gemini | Free tier |
+| 2 | ☆ | Gemini 3 Flash Preview | Google Gemini | Free tier |
+| 3 | ☆ | Gemini 2.0 Flash | Google Gemini | Free tier |
+| 4 | ☆ | Gemini 2.0 Flash Lite | Google Gemini | Free tier |
+| 5 | ☆ | Gemini 2.5 Pro | Google Gemini | Free tier |
+| 6 | ☆ | Gemini 3 Pro Preview | Google Gemini | Free tier |
+| 7 | ☆ | **Mistral pixtral-large** | Mistral AI | Free tier |
+| 8 | ☆ | HF Qwen3-VL-8B | HuggingFace Inference | Free tier ($0.10/mo) |
+| 9 | ☆ | Groq Llama 4 Scout 17B | Groq | Free |
+| 10 | ☆ | Azure DeepSeek-V4-Pro | Azure AI Foundry | Free (Azure credits) |
+| 11 | ☆ | Azure gpt-4.1 / mini / nano | Azure AI Foundry | Free (Azure credits) |
+| 12 | ☆ | Azure gpt-4o / 4o-mini | Azure AI Foundry | Free (Azure credits) |
+| 13 | ☆ | Azure gpt-5.1 / 5.4 / mini / nano | Azure AI Foundry | Free (Azure credits) |
+| 14 | ☆ | Azure Kimi-K2.6 | Azure AI Foundry | Free (Azure credits) |
+| 15 | ☆ | Azure Phi-4 multimodal | Azure AI Foundry | Free (Azure credits) |
+| 16 | ☆ | Cloudflare Llama 4 Scout | Cloudflare Workers AI | Free tier |
+| 17 | ☆ | Cloudflare DeepSeek-R1 | Cloudflare Workers AI | Free tier |
+| 18 | ☆ | Cloudflare Qwen2.5-Coder-32B | Cloudflare Workers AI | Free tier |
+| 19 | ☆ | Cloudflare Gemma 4 26B | Cloudflare Workers AI | Free tier |
+| 20 | ☆ | Cloudflare Mistral-Small-3.1 | Cloudflare Workers AI | Free tier |
 
 > All backends fire in parallel — first success cancels the rest. No sequential batching.
 > Only backends with configured API keys are launched. Missing keys are skipped instantly.
 > Per-backend timeout: 12s | Total operation timeout: 25s
-> Paid backends require OpenRouter billing. HuggingFace free tier is $0.10/month.
+> Cloudflare, Azure, Groq, HuggingFace, and Mistral AI all offer free tiers.
 
 ## Capabilities & Limitations
 
@@ -149,10 +151,13 @@ You need at least **one** of these:
 
 | Key | Get it | Powers |
 |-----|--------|--------|
-| **Gemini API key** ⭐ | https://aistudio.google.com/apikey | Gemini 2.5 Flash / 2.0 Flash (free tier, fastest, tried first) |
-| **OpenRouter API key** | https://openrouter.ai/keys | Backends 7–18 (free + paid vision models) |
+| **Gemini API key** ⭐ | https://aistudio.google.com/apikey | Gemini 2.5 Flash / 3 Pro / 2.0 Flash (free tier, fastest, tried first) |
+| **OpenRouter API key** | https://openrouter.ai/keys | Multi-model access (free + paid) |
+| **Cloudflare API key** | https://dash.cloudflare.com/profile/api-tokens | Cloudflare Workers AI (free tier) |
+| **Azure AI key** | https://ai.azure.com | Azure AI Foundry models (free credits) |
+| **Mistral AI API key** | https://console.mistral.ai/api-keys | Mistral pixtral-large (free tier) |
 | **HuggingFace token** | https://huggingface.co/settings/tokens | HF Qwen3-VL (free tier, $0.10/mo) |
-| **Moondream API key** | https://console.moondream.ai | Moondream (5K requests/day free) |
+| **Groq API key** | https://console.groq.com/keys | Groq Llama 4 Scout (free tier) |
 
 Run `python setup.py` — choose to enter keys now or add later.
 Add keys later anytime with: `python setup.py --add-key`
@@ -495,9 +500,9 @@ User: "What's in this image?"  or  "describe this naturally"
         │
         ▼
   Fire ALL configured backends in parallel:
-    ☆ Gemini 2.5 Flash  (first, fastest)
-    ☆ Gemini 2.0 Flash
-    ☆ All others (HF, Free.ai, Moondream, OpenRouter...)
+    ☆ Gemini models  (first, fastest)
+    ☆ Mistral pixtral-large
+    ☆ Azure, Groq, HuggingFace, Cloudflare...
         │
         ▼
   First success wins → rest cancelled
@@ -518,7 +523,7 @@ vision-tool/
 ├── vision_mcp_server.py      # MCP server (stdio + HTTP modes)
 ├── vision_watchdog.vbs       # Invisible background process manager (WMI)
 ├── vision_watchdog.cs        # C# source for zero-flash compiled EXE
-├── setup.py                  # First-run API key wizard (Gemini, OpenRouter, HF, Moondream, etc.)
+├── setup.py                  # First-run API key wizard (10 providers: Gemini, OpenRouter, Cloudflare, Azure, OpenAI, Anthropic, Mistral, Groq, HF, etc.)
 ├── config.json.example       # Example config (safe to commit)
 ├── config.json               # Your actual keys (gitignored)
 ├── requirements.txt          # pip dependencies
