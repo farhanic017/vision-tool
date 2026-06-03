@@ -1,4 +1,14 @@
 {
-  "GEMINI_API_KEY": "your-gemini-api-key-here",
-  "OPENROUTER_API_KEY": "your-openrouter-api-key-here"
+  "GEMINI_API_KEY": "",
+  "OPENROUTER_API_KEY": "",
+  "CLOUDFLARE_API_KEY": "",
+  "AZUREAI_API_KEY": "",
+  "AZUREAI_ENDPOINT": "",
+  "OPENAI_API_KEY": "",
+  "ANTHROPIC_API_KEY": "",
+  "MISTRAL_API_KEY": "",
+  "GROQ_API_KEY": "",
+  "HF_TOKEN": "",
+  "FIREWORKS_API_KEY": "",
+  "DEFAULT_MODEL": ""
 }

@@ -34,24 +34,30 @@ CONFIG_PATH_LOCAL = _vp.CONFIG_PATH_LOCAL
 # ── helpers ──────────────────────────────────────────────────────────────
 
 
+def _is_tty():
+    try:
+        return sys.stdout.isatty()
+    except (OSError, ValueError, RuntimeError):
+        return False
+
 def bold(text):
-    return f"\033[1m{text}\033[0m" if sys.stdout.isatty() else text
+    return f"\033[1m{text}\033[0m" if _is_tty() else text
 
 
 def green(text):
-    return f"\033[92m{text}\033[0m" if sys.stdout.isatty() else text
+    return f"\033[92m{text}\033[0m" if _is_tty() else text
 
 
 def yellow(text):
-    return f"\033[93m{text}\033[0m" if sys.stdout.isatty() else text
+    return f"\033[93m{text}\033[0m" if _is_tty() else text
 
 
 def cyan(text):
-    return f"\033[96m{text}\033[0m" if sys.stdout.isatty() else text
+    return f"\033[96m{text}\033[0m" if _is_tty() else text
 
 
 def dim(text):
-    return f"\033[2m{text}\033[0m" if sys.stdout.isatty() else text
+    return f"\033[2m{text}\033[0m" if _is_tty() else text
 
 
 def prompt(label, default="", secret=False, optional=False):
@@ -108,6 +114,15 @@ def _save_to(path, config):
 
 
 def securesave(config):
+    # Merge missing keys from environment variables (never overwrite explicit values)
+    PROVIDER_ENV_KEYS = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY",
+                         "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY",
+                         "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY",
+                         "HF_TOKEN", "FIREWORKS_API_KEY", "DEFAULT_MODEL"]
+    for k in PROVIDER_ENV_KEYS:
+        env_val = os.environ.get(k, "")
+        if env_val and not config.get(k):
+            config[k] = env_val
     _save_to(CONFIG_PATH, config)
     _save_to(CONFIG_PATH_LOCAL, config)
     target = CONFIG_PATH
@@ -229,8 +244,15 @@ PROVIDER_LABELS = [
     ("MISTRAL_API_KEY", "Mistral AI"),
     ("GROQ_API_KEY", "Groq"),
     ("HF_TOKEN", "HuggingFace"),
+    ("FIREWORKS_API_KEY", "Fireworks AI"),
 ]
 
+
+def _safe_print(*args, **kwargs):
+    try:
+        print(*args, **kwargs)
+    except (OSError, ValueError, RuntimeError):
+        pass
 
 def show_keys():
     existing = {}
@@ -245,9 +267,9 @@ def show_keys():
             pass
     for key, label in PROVIDER_LABELS:
         val = existing.get(key, "")
-        print(f"  {label + ' API key':22s} {green('set') if val else yellow('not set')}")
+        _safe_print(f"  {label + ' API key':22s} {green('set') if val else yellow('not set')}")
     mdl = existing.get("DEFAULT_MODEL", "")
-    print(f"  {'Default model':22s} {cyan(mdl) if mdl else dim('(auto-fallback chain)')}")
+    _safe_print(f"  {'Default model':22s} {cyan(mdl) if mdl else dim('(auto-fallback chain)')}")
 
 
 def enter_keys():
@@ -316,6 +338,11 @@ def enter_keys():
         default=existing.get("HF_TOKEN", ""),
         secret=True, optional=True,
     )
+    fireworks_key = prompt(
+        "Fireworks AI API key (fw_...)",
+        default=existing.get("FIREWORKS_API_KEY", ""),
+        secret=True, optional=True,
+    )
 
     print()
     print(bold("  Validating..."))
@@ -357,6 +384,7 @@ def enter_keys():
         "MISTRAL_API_KEY": mistral_key,
         "GROQ_API_KEY": groq_key,
         "HF_TOKEN": hf_token,
+        "FIREWORKS_API_KEY": fireworks_key,
         "DEFAULT_MODEL": default_model,
     }
     securesave(config)
@@ -367,7 +395,7 @@ def enter_keys():
             try:
                 with open(verify_path) as f:
                     saved = json.load(f)
-                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN") if saved.get(k, "")]
+                saved_keys = [k for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY") if saved.get(k, "")]
                 if len(saved_keys) > 0:
                     verified = True
                     print(f"  {green('\u2714')} Keys verified: {', '.join(saved_keys)}")
@@ -434,7 +462,7 @@ def setup_later():
         except (json.JSONDecodeError, IOError):
             pass
 
-    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN"]
+    all_provider_keys = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY"]
     has_keys = any(existing.get(k) for k in all_provider_keys)
     if has_keys:
         print(yellow("  Keys already configured — nothing to skip."))
@@ -459,6 +487,7 @@ def setup_later():
     print("    Mistral:      https://console.mistral.ai/api-keys")
     print("    Groq:         https://console.groq.com/keys  (free tier)")
     print("    HuggingFace:  https://huggingface.co/settings/tokens")
+    print("    Fireworks AI: https://fireworks.ai/api-keys")
     print()
 
 

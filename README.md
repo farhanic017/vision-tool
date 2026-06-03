@@ -6,13 +6,13 @@
 
 vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
-images and videos by routing them through **18 external vision backends**.
+images and videos by routing them through **22 external vision backends**.
 
 ## Features
 
 - **Images** — PNG, JPG, WebP, BMP, animated GIF
 - **Videos** — MP4, WebM, MOV, AVI, MKV, FLV, WMV, M4V (via ffmpeg keyframe extraction)
-- **20+ fallback backends** — Gemini first, then all configured backends in parallel
+- **22 fallback backends** — Gemini first, then Azure, Groq, HF, Mistral, Fireworks all in parallel
 - **Full parallel fire** — ALL backends run simultaneously, first success wins, rest cancelled
 - **Fast — typical analysis in 2-5s**, worst case ~19s (no backends available)
 - **Smart file search** — checks direct path → known user dirs → shallow recursive scan
@@ -95,35 +95,36 @@ python install.py --auto
 
 ## Vision backends
 
-Gemini models are tried **first** (fastest, most reliable). All other backends fire **simultaneously** — the first successful response wins, the rest are cancelled. Typical analysis completes in **2-5 seconds**.
+Google Gemini models are tried **first** (2 fast attempts at 8s each). All remaining backends fire **simultaneously** (12s per backend) — the first successful response wins, the rest are cancelled. Typical analysis completes in **2-5 seconds**.
 
-| # | Tier | Model | Provider | Cost |
-|---|------|-------|----------|------|
-| 1 | ☆ | **Gemini 2.5 Flash** | Google Gemini | Free tier |
-| 2 | ☆ | Gemini 3 Flash Preview | Google Gemini | Free tier |
-| 3 | ☆ | Gemini 2.0 Flash | Google Gemini | Free tier |
-| 4 | ☆ | Gemini 2.0 Flash Lite | Google Gemini | Free tier |
-| 5 | ☆ | Gemini 2.5 Pro | Google Gemini | Free tier |
-| 6 | ☆ | Gemini 3 Pro Preview | Google Gemini | Free tier |
-| 7 | ☆ | **Mistral pixtral-large** | Mistral AI | Free tier |
-| 8 | ☆ | HF Qwen3-VL-8B | HuggingFace Inference | Free tier ($0.10/mo) |
-| 9 | ☆ | Groq Llama 4 Scout 17B | Groq | Free |
-| 10 | ☆ | Azure DeepSeek-V4-Pro | Azure AI Foundry | Free (Azure credits) |
-| 11 | ☆ | Azure gpt-4.1 / mini / nano | Azure AI Foundry | Free (Azure credits) |
-| 12 | ☆ | Azure gpt-4o / 4o-mini | Azure AI Foundry | Free (Azure credits) |
-| 13 | ☆ | Azure gpt-5.1 / 5.4 / mini / nano | Azure AI Foundry | Free (Azure credits) |
-| 14 | ☆ | Azure Kimi-K2.6 | Azure AI Foundry | Free (Azure credits) |
-| 15 | ☆ | Azure Phi-4 multimodal | Azure AI Foundry | Free (Azure credits) |
-| 16 | ☆ | Cloudflare Llama 4 Scout | Cloudflare Workers AI | Free tier |
-| 17 | ☆ | Cloudflare DeepSeek-R1 | Cloudflare Workers AI | Free tier |
-| 18 | ☆ | Cloudflare Qwen2.5-Coder-32B | Cloudflare Workers AI | Free tier |
-| 19 | ☆ | Cloudflare Gemma 4 26B | Cloudflare Workers AI | Free tier |
-| 20 | ☆ | Cloudflare Mistral-Small-3.1 | Cloudflare Workers AI | Free tier |
+| # | Model | Provider | Cost |
+|---|-------|----------|------|
+| 1 | Gemini 2.5 Flash | Google Gemini | Free tier |
+| 2 | Gemini 3 Flash Preview | Google Gemini | Free tier |
+| 3 | Gemini 2.0 Flash | Google Gemini | Free tier |
+| 4 | Gemini 2.0 Flash Lite | Google Gemini | Free tier |
+| 5 | Gemini 2.5 Pro | Google Gemini | Free tier |
+| 6 | Gemini 3 Pro Preview | Google Gemini | Free tier |
+| 7 | Azure DeepSeek-V4-Pro | Azure AI Foundry | Free (Azure credits) |
+| 8 | Azure gpt-4.1 | Azure AI Foundry | Free (Azure credits) |
+| 9 | Azure gpt-4.1-mini | Azure AI Foundry | Free (Azure credits) |
+| 10 | Azure gpt-4.1-nano | Azure AI Foundry | Free (Azure credits) |
+| 11 | Azure gpt-4o | Azure AI Foundry | Free (Azure credits) |
+| 12 | Azure gpt-4o-mini | Azure AI Foundry | Free (Azure credits) |
+| 13 | Azure gpt-5.1 | Azure AI Foundry | Free (Azure credits) |
+| 14 | Azure gpt-5.4 | Azure AI Foundry | Free (Azure credits) |
+| 15 | Azure gpt-5.4-mini | Azure AI Foundry | Free (Azure credits) |
+| 16 | Azure gpt-5.4-nano | Azure AI Foundry | Free (Azure credits) |
+| 17 | Azure Kimi-K2.6 | Azure AI Foundry | Free (Azure credits) |
+| 18 | Azure Phi-4 multimodal | Azure AI Foundry | Free (Azure credits) |
+| 19 | Groq Llama 4 Scout 17B | Groq | Free |
+| 20 | HF Qwen3-VL-8B | HuggingFace Inference Providers | Free tier |
+| 21 | Mistral pixtral-large | Mistral AI | Free tier |
+| 22 | Fireworks Llama 3.2 90B Vision | Fireworks AI | Free tier |
 
-> All backends fire in parallel — first success cancels the rest. No sequential batching.
+> First 2 backends tried sequentially (8s timeout each), then rest fire in parallel (12s timeout each) — first success cancels all remaining. Total operation timeout: 25s.
 > Only backends with configured API keys are launched. Missing keys are skipped instantly.
-> Per-backend timeout: 12s | Total operation timeout: 25s
-> Cloudflare, Azure, Groq, HuggingFace, and Mistral AI all offer free tiers.
+> Gemini, Azure, Groq, HuggingFace, and Mistral all offer free tiers.
 
 ## Capabilities & Limitations
 
@@ -131,7 +132,7 @@ Gemini models are tried **first** (fastest, most reliable). All other backends f
 
 **Videos** — Extracts **up to 8 evenly-spaced keyframes** via ffmpeg, analyzes them for UI flow, actions, scene changes, layout, text.
 
-**What determines quality** — Gemini 2.5 Flash is tried first (fastest, free). All other backends fire in parallel. The first backend to respond wins (typically 2-5s). Paid models (GPT-4o, Claude Sonnet) give richer detail but may not be the fastest.
+**What determines quality** — Gemini models are tried first (2 fast sequential attempts, 8s each). All remaining backends fire in parallel (12s each). The first backend to respond wins (typically 2-5s). Gemini 2.5 Pro and Flash give the best balance of speed and quality.
 
 **Caveats:**
 - Image capped at 1024px → small UI text/icons may be unreadable
@@ -151,13 +152,14 @@ You need at least **one** of these:
 
 | Key | Get it | Powers |
 |-----|--------|--------|
-| **Gemini API key** ⭐ | https://aistudio.google.com/apikey | Gemini 2.5 Flash / 3 Pro / 2.0 Flash (free tier, fastest, tried first) |
-| **OpenRouter API key** | https://openrouter.ai/keys | Multi-model access (free + paid) |
-| **Cloudflare API key** | https://dash.cloudflare.com/profile/api-tokens | Cloudflare Workers AI (free tier) |
-| **Azure AI key** | https://ai.azure.com | Azure AI Foundry models (free credits) |
-| **Mistral AI API key** | https://console.mistral.ai/api-keys | Mistral pixtral-large (free tier) |
-| **HuggingFace token** | https://huggingface.co/settings/tokens | HF Qwen3-VL (free tier, $0.10/mo) |
+| **Gemini API key** ⭐ | https://aistudio.google.com/apikey | Gemini 2.5 Flash / 3 Pro / 2.0 Flash (free tier, tried first) |
+| **Azure AI key** | https://ai.azure.com | Azure AI Foundry (12 models, free credits) |
 | **Groq API key** | https://console.groq.com/keys | Groq Llama 4 Scout (free tier) |
+| **Mistral AI API key** | https://console.mistral.ai/api-keys | Mistral pixtral-large (free tier) |
+| **HuggingFace token** | https://huggingface.co/settings/tokens | HF Qwen3-VL (free tier) |
+| **Fireworks AI API key** | https://fireworks.ai/api-keys | Fireworks Llama 3.2 90B Vision (free tier) |
+| **Cloudflare API key** | https://dash.cloudflare.com/profile/api-tokens | Cloudflare Workers AI (free tier, for --model flag) |
+| **OpenRouter API key** | https://openrouter.ai/keys | Multi-model access (free + paid) |
 
 Run `python setup.py` — choose to enter keys now or add later.
 Add keys later anytime with: `python setup.py --add-key`
@@ -499,10 +501,13 @@ User: "What's in this image?"  or  "describe this naturally"
         └── Videos → ffmpeg extracts 8 keyframes
         │
         ▼
-  Fire ALL configured backends in parallel:
-    ☆ Gemini models  (first, fastest)
+  Fire ALL configured backends:
+    ☆ Gemini models       (first, 2 fast sequential attempts)
+    ☆ Azure models        
+    ☆ Groq Llama 4 Scout
+    ☆ HuggingFace Qwen3-VL
     ☆ Mistral pixtral-large
-    ☆ Azure, Groq, HuggingFace, Cloudflare...
+    ☆ Fireworks Llama 3.2 90B Vision
         │
         ▼
   First success wins → rest cancelled
@@ -523,7 +528,7 @@ vision-tool/
 ├── vision_mcp_server.py      # MCP server (stdio + HTTP modes)
 ├── vision_watchdog.vbs       # Invisible background process manager (WMI)
 ├── vision_watchdog.cs        # C# source for zero-flash compiled EXE
-├── setup.py                  # First-run API key wizard (10 providers: Gemini, OpenRouter, Cloudflare, Azure, OpenAI, Anthropic, Mistral, Groq, HF, etc.)
+├── setup.py                  # First-run API key wizard (10 providers: Gemini, OpenRouter, Cloudflare, Azure, OpenAI, Anthropic, Mistral, Groq, HF, Vertex AI)
 ├── config.json.example       # Example config (safe to commit)
 ├── config.json               # Your actual keys (gitignored)
 ├── requirements.txt          # pip dependencies
@@ -546,6 +551,60 @@ vision-tool/
   providers you configure.
 - **No data storage.** Images/videos are never saved or logged; keyframes are
   written to a temp directory and immediately cleaned up.
+
+## Version History
+
+### v6 (Current) — Fireworks & Fuzz Hardening
+- Added **Fireworks AI** backend (Llama 3.2 90B Vision) — 22 total backends
+- Fixed 4 pre-existing **fuzz test failures** (312/312 passing):
+  - MCP int path crash — `_resolve_path()` type guard
+  - Resource leak false positive — `_INITIAL_TMP_COUNT` baseline
+  - `show_keys` crash on closed stdout — `_is_tty()` / `_safe_print()` wrappers
+  - Corrupted config crash — same print hardening
+- **Gemini-first priority** — swapped backend order so Gemini is always tried first
+- **Secure config save** — `securesave()` auto-merges env vars into config.json
+- **Bytes JSON serialization fix** — `call_gemini_multi()` tuple frame handling
+- `test_*.py` / `list_*.py` / `assets/` added to `.gitignore`
+
+### v5 — Fuzz Testing & Security Hardening
+- Added `fuzz_stress_test.py` — 312 tests covering encoding attacks, path traversal, concurrency, memory pressure, corrupted inputs, protocol violations, subprocess failures, environment corruption, type confusion, resource leaks
+- Config corruption protection — `load_config()` resilient to all JSON attack formats
+- MCP server fuzzing — type confusion, HTTP attacks, tool call attacks
+- Stdio wrapping safety — safe `_REAL_STDOUT` preservation across all subprocesses
+- GraphQL introspection blocked — `/mcp` endpoint hardened
+
+### v4 — Gemini Backend & Parallel Fire
+- Added **Google Gemini** as primary backend (6 models: 2.5 Flash, 3 Flash Preview, 2.0 Flash, 2.0 Flash Lite, 2.5 Pro, 3 Pro Preview)
+- Added **OpenRouter** support
+- **Parallel fire mode** — first 2 backends sequential (8s), rest simultaneous (12s)
+- **Fireworks AI** (planned, fully stubbed)
+- `DEFAULT_MODEL` config support
+- `requirements.txt` added
+
+### v3 — MCP Server & Always-On Mode
+- `vision_mcp_server.py` — stdio + HTTP MCP server
+- `ALWAYS_ON.md` — permanent system instruction for never saying "can't view"
+- `vision_watchdog.vbs` + `vision_watchdog.cs` — invisible background process manager
+- `install.py` — interactive and non-interactive auto-installer
+- OpenCode skill integration (`SKILL.md`)
+- Dynamic-skill-loader `alwaysOn` support
+
+### v2 — Multi-Provider & Video
+- Added **Groq**, **HuggingFace**, **Mistral AI** backends
+- **Video support** — ffmpeg keyframe extraction, 8 evenly-spaced frames
+- `setup.py` — interactive API key wizard with validation
+- `_has_key()` provider detection for runtime backend filtering
+- `get_mime()` MIME detection for unknown file types
+- `extract_video_frames()` GIF support (no ffmpeg needed)
+
+### v1 — Initial Release
+- Basic image analysis via **Cloudflare Workers AI** + **Azure AI Foundry**
+- CLI entry point (`vision_proxy.py main()`)
+- Pillow-based resize/JPEG compression
+- File search across Desktop, Downloads, Pictures, Documents
+- `first_success` sequential backend strategy
+- `config.json` with gitignored secrets
+- `setup.py` initial version with Cloudflare + Azure only
 
 ## License
 

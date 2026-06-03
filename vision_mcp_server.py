@@ -94,6 +94,8 @@ def _resolve_path(raw):
     """Resolve an image/video path to absolute — handles relative paths, ~, and Windows backslashes."""
     if not raw:
         return raw
+    if not isinstance(raw, str):
+        return ""
     raw = raw.strip().strip('"').strip("'")
     # Expand ~ to user home
     raw = os.path.expanduser(raw)

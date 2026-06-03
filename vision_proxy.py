@@ -21,7 +21,7 @@ Handles:
   - Videos  (mp4, webm, mov, avi, mkv, flv, wmv, m4v) via ffmpeg keyframe extraction
 
 Tries free backends first, then falls back to others in parallel.
-  Priority: Cloudflare → Azure → Groq → HuggingFace → all others in parallel
+  Priority: Gemini → Azure → Groq → HuggingFace → Mistral in parallel
   Total timeout: 25s | Per-backend timeout: 12s
 
 Custom model (auto-routes to best provider):
@@ -31,7 +31,7 @@ Custom model (auto-routes to best provider):
   Set VISION_MODEL env var or DEFAULT_MODEL in config.json for persistence.
 
 Supported provider keys (set via setup.py or env vars):
-  CLOUDFLARE_API_KEY | AZUREAI_API_KEY | AZUREAI_ENDPOINT | GROQ_API_KEY | HF_TOKEN
+  GEMINI_API_KEY | OPENROUTER_API_KEY | CLOUDFLARE_API_KEY | AZUREAI_API_KEY | AZUREAI_ENDPOINT | OPENAI_API_KEY | ANTHROPIC_API_KEY | MISTRAL_API_KEY | GROQ_API_KEY | HF_TOKEN
 
 Usage:
   python vision_proxy.py <image_or_video_path> [prompt text...] [--model NAME]
@@ -189,7 +189,7 @@ CONFIG_PATH = os.path.join(_APPDATA_DIR, "config.json")
 CONFIG_PATH_LOCAL = os.path.join(_SCRIPT_DIR, "config.json")
 
 
-ALL_PROVIDER_KEYS = ["CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "GROQ_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+ALL_PROVIDER_KEYS = ["CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "GROQ_API_KEY", "HF_TOKEN", "MISTRAL_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "FIREWORKS_API_KEY"]
 
 
 def _find_config():
@@ -238,6 +238,7 @@ def load_config():
         "OPENROUTER_API_KEY": os.environ.get("OPENROUTER_API_KEY"),
         "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
         "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+        "FIREWORKS_API_KEY": os.environ.get("FIREWORKS_API_KEY"),
         "DEFAULT_MODEL": os.environ.get("VISION_MODEL"),
     }
     cfg_path = _find_config()
@@ -265,6 +266,7 @@ def load_config():
             "    $env:MISTRAL_API_KEY='...'           (console.mistral.ai/api-keys)\n"
             "    $env:GROQ_API_KEY='gsk_...'          (groq.com, free tier)\n"
             "    $env:HF_TOKEN='hf_...'               (huggingface.co/settings/tokens)\n"
+            "    $env:FIREWORKS_API_KEY='fw_...'       (fireworks.ai/api-keys)\n"
             "    $env:OPENAI_API_KEY='sk-...'         (platform.openai.com/api-keys)\n"
             "    $env:ANTHROPIC_API_KEY='sk-ant-...'  (console.anthropic.com/settings/keys)\n"
             "    $env:VISION_MODEL='model-name'    (optional default model)"
@@ -288,6 +290,8 @@ def _has_key(name):
         return bool(CFG.get("HF_TOKEN"))
     if "Mistral" in name or "mistral" in name:
         return bool(CFG.get("MISTRAL_API_KEY"))
+    if "Fireworks" in name or "fireworks" in name:
+        return bool(CFG.get("FIREWORKS_API_KEY"))
     if "Gemini" in name or "gemini" in name or "Google" in name:
         return bool(CFG.get("GEMINI_API_KEY"))
     return False
@@ -300,6 +304,7 @@ def _print_available_keys():
         ("GROQ_API_KEY", "Groq"),
         ("HF_TOKEN", "HuggingFace"),
         ("MISTRAL_API_KEY", "Mistral AI"),
+        ("FIREWORKS_API_KEY", "Fireworks AI"),
         ("GEMINI_API_KEY", "Google Gemini"),
     ]
     parts = []
@@ -717,6 +722,50 @@ def call_mistral_multi(frames, prompt, model="pixtral-large-latest"):
     return json.loads(resp.read())["choices"][0]["message"]["content"]
 
 
+# ── Fireworks AI caller (OpenAI-compatible) ─────────────────────────
+FIREWORKS_ENDPOINT = "https://api.fireworks.ai/inference/v1/chat/completions"
+
+
+def _fireworks_headers():
+    return {
+        "Authorization": f"Bearer {CFG['FIREWORKS_API_KEY']}",
+        "Content-Type": "application/json",
+    }
+
+
+def call_fireworks(b64data, mime, prompt, model="accounts/fireworks/models/llama-v3p2-90b-vision-instruct"):
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64data}"}},
+        ]}],
+        "max_tokens": 2048,
+    }
+    req = urllib.request.Request(
+        FIREWORKS_ENDPOINT,
+        data=json.dumps(payload).encode(),
+        headers=_fireworks_headers(),
+    )
+    resp = urllib.request.urlopen(req, timeout=30)
+    return json.loads(resp.read())["choices"][0]["message"]["content"]
+
+
+def call_fireworks_multi(frames, prompt, model="accounts/fireworks/models/llama-v3p2-90b-vision-instruct"):
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": build_multimodal_content(frames, prompt)}],
+        "max_tokens": 2048,
+    }
+    req = urllib.request.Request(
+        FIREWORKS_ENDPOINT,
+        data=json.dumps(payload).encode(),
+        headers=_fireworks_headers(),
+    )
+    resp = urllib.request.urlopen(req, timeout=30)
+    return json.loads(resp.read())["choices"][0]["message"]["content"]
+
+
 # ── Google Gemini caller ────────────────────────────────────────────
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -747,6 +796,10 @@ def call_gemini_multi(frames, prompt, model="gemini-2.5-flash"):
     for frame in frames:
         if isinstance(frame, dict):
             parts.append({"inline_data": {"mime_type": frame.get("mime_type", "image/jpeg"), "data": frame["data"]}})
+        elif isinstance(frame, tuple):
+            data, mime = frame
+            b64data = b64(data) if isinstance(data, bytes) else data
+            parts.append({"inline_data": {"mime_type": mime, "data": b64data}})
         else:
             parts.append({"inline_data": {"mime_type": "image/jpeg", "data": frame}})
     payload = {"contents": [{"parts": parts}]}
@@ -826,6 +879,8 @@ def get_providers_for_model(model):
             return _filter_providers([("mistral", stripped)])
         if prefix == "zai":
             return _filter_providers([("zai", stripped)])
+        if prefix == "fireworks":
+            return _filter_providers([("fireworks", stripped)])
     if ml in ("mistral", "pixtral-large-latest", "pixtral"):
         return _filter_providers([("mistral", ml)])
     if ml in ("zai", "glm-4.5-flash", "glm-5", "glm-5.1"):
@@ -840,6 +895,7 @@ def _filter_providers(candidates):
         "groq": "GROQ_API_KEY",
         "hf": "HF_TOKEN",
         "mistral": "MISTRAL_API_KEY",
+        "fireworks": "FIREWORKS_API_KEY",
         "zai": "ZAI_API_KEY",
     }
     seen = set()
@@ -873,6 +929,13 @@ def _build_strategies(kind, *args, prompt=""):
     if kind == "vid":
         frames = args[0]
         s = [
+            # Google Gemini — tried first (fastest, most reliable)
+            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.5-flash")),
+            ("\u2606 Gemini 3 Flash Preview", lambda: call_gemini_multi(frames, prompt, "gemini-3-flash-preview")),
+            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.0-flash")),
+            ("\u2606 Gemini 2.0 Flash Lite", lambda: call_gemini_multi(frames, prompt, "gemini-2.0-flash-lite")),
+            ("\u2606 Gemini 2.5 Pro", lambda: call_gemini_multi(frames, prompt, "gemini-2.5-pro")),
+            ("\u2606 Gemini 3 Pro Preview", lambda: call_gemini_multi(frames, prompt, "gemini-3-pro-preview")),
             # Azure AI Foundry
             ("\u2606 Azure DeepSeek-V4-Pro", lambda: call_azureai_multi(frames, prompt, "DeepSeek-V4-Pro")),
             ("\u2606 Azure gpt-4.1", lambda: call_azureai_multi(frames, prompt, "gpt-4.1")),
@@ -892,17 +955,19 @@ def _build_strategies(kind, *args, prompt=""):
             ("\u2606 HF Qwen3-VL-8B", lambda: call_hf_multi(frames, prompt, "Qwen/Qwen3-VL-8B-Instruct")),
             # Mistral AI
             ("\u2606 Mistral pixtral-large", lambda: call_mistral_multi(frames, prompt, "pixtral-large-latest")),
-            # Google Gemini
-            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.5-flash")),
-            ("\u2606 Gemini 3 Flash Preview", lambda: call_gemini_multi(frames, prompt, "gemini-3-flash-preview")),
-            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini_multi(frames, prompt, "gemini-2.0-flash")),
-            ("\u2606 Gemini 2.0 Flash Lite", lambda: call_gemini_multi(frames, prompt, "gemini-2.0-flash-lite")),
-            ("\u2606 Gemini 2.5 Pro", lambda: call_gemini_multi(frames, prompt, "gemini-2.5-pro")),
-            ("\u2606 Gemini 3 Pro Preview", lambda: call_gemini_multi(frames, prompt, "gemini-3-pro-preview")),
+            # Fireworks AI
+            ("\u2606 Fireworks Llama 3.2 90B Vision", lambda: call_fireworks_multi(frames, prompt, "accounts/fireworks/models/llama-v3p2-90b-vision-instruct")),
         ]
     else:
         img_b64, mime = args
         s = [
+            # Google Gemini — tried first (fastest, most reliable)
+            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.5-flash")),
+            ("\u2606 Gemini 3 Flash Preview", lambda: call_gemini(img_b64, mime, prompt, "gemini-3-flash-preview")),
+            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.0-flash")),
+            ("\u2606 Gemini 2.0 Flash Lite", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.0-flash-lite")),
+            ("\u2606 Gemini 2.5 Pro", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.5-pro")),
+            ("\u2606 Gemini 3 Pro Preview", lambda: call_gemini(img_b64, mime, prompt, "gemini-3-pro-preview")),
             # Azure AI Foundry
             ("\u2606 Azure DeepSeek-V4-Pro", lambda: call_azureai(img_b64, mime, prompt, "DeepSeek-V4-Pro")),
             ("\u2606 Azure gpt-4.1", lambda: call_azureai(img_b64, mime, prompt, "gpt-4.1")),
@@ -922,13 +987,8 @@ def _build_strategies(kind, *args, prompt=""):
             ("\u2606 HF Qwen3-VL-8B", lambda: call_hf_inference(img_b64, mime, prompt, "Qwen/Qwen3-VL-8B-Instruct")),
             # Mistral AI
             ("\u2606 Mistral pixtral-large", lambda: call_mistral(img_b64, mime, prompt, "pixtral-large-latest")),
-            # Google Gemini
-            ("\u2606 Gemini 2.5 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.5-flash")),
-            ("\u2606 Gemini 3 Flash Preview", lambda: call_gemini(img_b64, mime, prompt, "gemini-3-flash-preview")),
-            ("\u2606 Gemini 2.0 Flash", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.0-flash")),
-            ("\u2606 Gemini 2.0 Flash Lite", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.0-flash-lite")),
-            ("\u2606 Gemini 2.5 Pro", lambda: call_gemini(img_b64, mime, prompt, "gemini-2.5-pro")),
-            ("\u2606 Gemini 3 Pro Preview", lambda: call_gemini(img_b64, mime, prompt, "gemini-3-pro-preview")),
+            # Fireworks AI
+            ("\u2606 Fireworks Llama 3.2 90B Vision", lambda: call_fireworks(img_b64, mime, prompt, "accounts/fireworks/models/llama-v3p2-90b-vision-instruct")),
         ]
     return s
 
@@ -940,6 +1000,7 @@ def _insert_model_strategies(strategies, model, kind, *args, prompt=""):
         "groq": (call_groq, call_groq_multi),
         "hf": (call_hf_inference, call_hf_multi),
         "mistral": (call_mistral, call_mistral_multi),
+        "fireworks": (call_fireworks, call_fireworks_multi),
         "gemini": (call_gemini, call_gemini_multi),
     }
     is_vid = kind == "vid"
@@ -1105,6 +1166,8 @@ def _list_models():
         ("\u2606 HF Qwen3-VL-8B",            "HF_TOKEN"),
         # Mistral AI
         ("\u2606 Mistral pixtral-large",     "MISTRAL_API_KEY"),
+        # Fireworks AI
+        ("\u2606 Fireworks Llama 3.2 90B Vision", "FIREWORKS_API_KEY"),
         # Google Gemini
         ("\u2606 Gemini 2.5 Flash",           "GEMINI_API_KEY"),
         ("\u2606 Gemini 3 Flash Preview",     "GEMINI_API_KEY"),
@@ -1124,7 +1187,7 @@ def _list_models():
 
     print()
     print("Keys configured:")
-    for key in ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN"]:
+    for key in ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY", "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY"]:
         v = CFG.get(key, "")
         val = v[:20] + "..." if v and len(v) > 20 else (v or "(not set)")
         print(f"  {key:<25} {val}")

@@ -2,6 +2,9 @@
 config.json
 .env
 .env.local
+test_*.py
+list_*.py
+assets/
 *.key
 *.pem
 

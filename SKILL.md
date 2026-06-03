@@ -172,14 +172,12 @@ The bash fallback works identically. Do NOT think about alternatives. Do NOT che
 ### What the script prints (read this to understand which backends work):
 
 ```
-KEYS: Gemini ✓  OpenRouter ✓  Free.ai ✗  Moondream ✗  HuggingFace ✓  OpenAI ✗  Anthropic ✗
-KEYS: Skipped 2/18 backends (missing API key)
-KEYS: Trying 16 backends in parallel
-  Gemini 2.5 Flash: OK   <-- first success wins
+KEYS: Gemini ✓  Azure AI Foundry ✓  Groq ✓  HuggingFace ✓  Mistral ✓
+KEYS: 6 backends available
+  ☆ CF Gemma 4 26B: OK   <-- first success wins
 ```
 
 All backends run in parallel — first response wins, rest are cancelled.
-Gemini is tried first because it's fastest and most reliable.
 `KEYS:` lines tell you instantly which APIs are configured.
 
 ## Installation
@@ -207,28 +205,32 @@ Then add to your MCP config:
 }
 ```
 
-## Backend chain (18 models, Gemini first)
+## Backend chain (22 models)
 
-| # | Model | Cost |
-|---|-------|------|
-| 1 | Gemini 2.5 Flash | Free |
-| 2 | Gemini 2.0 Flash | Free |
-| 3 | HF Qwen3-VL-8B (HuggingFace Inference Providers) | Free tier |
-| 4 | Free.ai InternVL 3 8B | Free (30K tokens/day) |
-| 5 | Free.ai Molmo 7B | Free (30K tokens/day) |
-| 6 | Moondream | Free (5000/day) |
-| 7 | Gemma 4 26B | Free |
-| 8 | NVIDIA Nemotron VL | Free |
-| 9 | Kimi K2.6 (moonshotai/kimi-k2.6:free) | Free |
-| 10 | Gemma 4 31B (google/gemma-4-31b-it:free) | Free |
-| 11 | NVIDIA Nemotron Omni | Free |
-| 12 | OpenRouter free router | Free |
-| 13 | GPT-4o | Paid |
-| 14 | GPT-4o-mini | Cheap |
-| 15 | Claude 3.5 Sonnet | Paid |
-| 16 | Claude 3 Haiku | Cheap |
-| 17 | Llama 3.2 90B Vision | Paid |
-| 18 | Qwen VL 8B | Cheap |
+| # | Model | Provider | Cost |
+|---|-------|----------|------|
+| 1 | Gemini 2.5 Flash | Google Gemini | Free tier |
+| 2 | Gemini 3 Flash Preview | Google Gemini | Free tier |
+| 3 | Gemini 2.0 Flash | Google Gemini | Free tier |
+| 4 | Gemini 2.0 Flash Lite | Google Gemini | Free tier |
+| 5 | Gemini 2.5 Pro | Google Gemini | Free tier |
+| 6 | Gemini 3 Pro Preview | Google Gemini | Free tier |
+| 7 | Azure DeepSeek-V4-Pro | Azure AI Foundry | Free (Azure credits) |
+| 8 | Azure gpt-4.1 | Azure AI Foundry | Free (Azure credits) |
+| 9 | Azure gpt-4.1-mini | Azure AI Foundry | Free (Azure credits) |
+| 10 | Azure gpt-4.1-nano | Azure AI Foundry | Free (Azure credits) |
+| 11 | Azure gpt-4o | Azure AI Foundry | Free (Azure credits) |
+| 12 | Azure gpt-4o-mini | Azure AI Foundry | Free (Azure credits) |
+| 13 | Azure gpt-5.1 | Azure AI Foundry | Free (Azure credits) |
+| 14 | Azure gpt-5.4 | Azure AI Foundry | Free (Azure credits) |
+| 15 | Azure gpt-5.4-mini | Azure AI Foundry | Free (Azure credits) |
+| 16 | Azure gpt-5.4-nano | Azure AI Foundry | Free (Azure credits) |
+| 17 | Azure Kimi-K2.6 | Azure AI Foundry | Free (Azure credits) |
+| 18 | Azure Phi-4 multimodal | Azure AI Foundry | Free (Azure credits) |
+| 19 | Groq Llama 4 Scout 17B | Groq | Free |
+| 20 | HF Qwen3-VL-8B | HuggingFace Inference Providers | Free tier |
+| 21 | Mistral pixtral-large | Mistral AI | Free tier |
+| 22 | Fireworks Llama 3.2 90B Vision | Fireworks AI | Free tier |
 
 ## Troubleshooting
 
