@@ -4,6 +4,7 @@ config.json
 .env.local
 test_*.py
 list_*.py
+_test_*.*
 assets/
 *.key
 *.pem
