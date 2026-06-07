@@ -258,7 +258,7 @@ def save_config(config):
             json.dump(config, f)
 
 
-def load_config():
+def load_config(require_keys=True):
     keys = {
         "CLOUDFLARE_API_KEY": os.environ.get("CLOUDFLARE_API_KEY"),
         "AZUREAI_API_KEY": os.environ.get("AZUREAI_API_KEY"),
@@ -293,7 +293,7 @@ def load_config():
     native_model = keys.get("DEFAULT_MODEL", "")
     if not present and _is_native_model(native_model):
         present.append("DEFAULT_MODEL")
-    if not present:
+    if not present and require_keys:
         raise RuntimeError(
             "No API keys configured.\n"
             "  Run setup.py to configure:  python setup.py\n"
@@ -2063,7 +2063,7 @@ def analyze(file_path, prompt="", model=None):
 
 def _list_models():
     global CFG
-    CFG = load_config()
+    CFG = load_config(require_keys=False)
 
     models = [
         # Azure AI Foundry
