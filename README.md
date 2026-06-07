@@ -5,14 +5,57 @@
 ![author Farhan Dhrubo](https://img.shields.io/badge/author-Farhan%20Dhrubo-F97316)
 ![version v8](https://img.shields.io/badge/version-v8-2563EB)
 ![tests 591 passed](https://img.shields.io/badge/tests-591%20passed-16A34A)
+![MCP server](https://img.shields.io/badge/MCP-server-06B6D4)
+![AI agents](https://img.shields.io/badge/AI-agents-22C55E)
+![local LLMs](https://img.shields.io/badge/local-LLMs-F59E0B)
+![vision models](https://img.shields.io/badge/vision-models-A855F7)
 
 > Created by [Farhan Dhrubo](https://github.com/farhanic017) — [Submit an issue](https://github.com/farhanic017/vision-tool/issues)
 
-**Image & video analysis for AI coding assistants — always-on, always available.**
+**MCP vision server for AI agents, coding assistants, local LLMs, and text-only models.**
 
-vision-tool lets any AI model — including local models, free APIs, or
-models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
-images and videos by routing them through **23 external vision backends**.
+vision-tool gives **Claude Desktop, Claude Code, Cursor, OpenCode, VS Code,
+Continue.dev, Windsurf, Ollama, LM Studio, llama.cpp, OpenRouter, Gemini,
+OpenAI, Anthropic, and local AI agents** the ability to understand screenshots,
+diagrams, UI clips, images, and videos.
+
+It works as a **Model Context Protocol (MCP) server**, CLI tool, OpenCode skill,
+or Python library. Text-only models and local LLMs can call `analyze_image` or
+`analyze_video`, then receive a normal text description they can reason over.
+
+If this saves you from "I can't view images" responses, star the repo so more
+AI agent builders can find it.
+
+## Why developers star it
+
+- **Adds vision to text-only agents** - Claude, Cursor, OpenCode, Continue,
+  VS Code agents, local LLMs, and terminal coding assistants can inspect images.
+- **Works with MCP** - exposes `analyze_image` and `analyze_video` as standard
+  MCP tools for any MCP-compatible client.
+- **Supports images and videos** - screenshots, diagrams, UI mockups, web pages,
+  app flows, screen recordings, MP4 clips, and animated GIFs.
+- **Auto-detects working vision backends** - checks local VLMs, cloud keys,
+  OpenRouter, Gemini, Ollama, LM Studio, and MCP/CLI configs before asking for
+  new API keys.
+- **Saves quota with memory** - remembers rate-limit, token-limit, and quota
+  failures for 24 hours, then retries them after cooldown.
+- **Keeps itself fresh** - refreshes free/paid capability status every 2 days
+  in the background when the agent starts.
+- **Routes across 23 vision backends** - Gemini first, then provider fallback
+  through Azure, Groq, HuggingFace, Mistral, Fireworks, ZAI, and more.
+
+## Popular use cases
+
+- Add an **MCP vision server** to Claude Desktop, Claude Code, Cursor, VS Code,
+  OpenCode, Continue.dev, Windsurf, or any MCP-compatible AI coding assistant.
+- Give **local LLMs** such as Ollama, LM Studio, and llama.cpp image analysis
+  without switching away from local text models.
+- Route **OpenRouter vision models**, Gemini vision, OpenAI vision, Anthropic
+  Claude vision, and free vision APIs through one fallback chain.
+- Convert screenshots, UI mockups, architecture diagrams, and web pages into
+  plain text an AI agent can understand.
+- Summarize MP4 screen recordings, app demos, UI clips, and videos into
+  keyframe-based descriptions for agent reasoning.
 
 ## Demo Video
 
