@@ -60,6 +60,21 @@ def _get_vp():
         _vp = vision_proxy
     return _vp
 
+
+def _start_background_refresh():
+    """Kick the 2-day capability refresh as soon as the MCP process starts."""
+    try:
+        vp = _get_vp()
+        starter = getattr(vp, "start_background_capability_refresh", None)
+        if callable(starter):
+            starter(reason="mcp_startup")
+    except Exception as exc:
+        try:
+            _SAFE_STDERR.write(f"vision-tool refresh startup skipped: {exc}\n")
+            _SAFE_STDERR.flush()
+        except Exception:
+            pass
+
 TOOLS = {
     "analyze_image": {
         "name": "analyze_image",
@@ -69,7 +84,7 @@ TOOLS = {
             "properties": {
                 "path": {"type": "string", "description": "Path to the image (png, jpg, webp, bmp, gif). Can be absolute or relative."},
                 "prompt": {"type": "string", "description": "Optional custom prompt, e.g. 'Extract all text from this diagram' or 'Focus only on colours and typography'"},
-                "model": {"type": "string", "description": "Optional model name (via OpenRouter), e.g. 'openai/gpt-4o' or 'anthropic/claude-sonnet-4'"},
+                "model": {"type": "string", "description": "Optional model name, e.g. 'ollama/llava:latest', 'openrouter/google/gemini-2.5-flash', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4-5', or 'cohere/command-a-vision-07-2025'"},
             },
             "required": ["path"],
         },
@@ -82,7 +97,7 @@ TOOLS = {
             "properties": {
                 "path": {"type": "string", "description": "Path to the video (mp4, webm, mov, avi, mkv, flv, wmv, m4v). Can be absolute or relative."},
                 "prompt": {"type": "string", "description": "Optional custom prompt, e.g. 'Describe the UI flow step by step' or 'Focus only on text appearing on screen'"},
-                "model": {"type": "string", "description": "Optional model name (via OpenRouter), e.g. 'openai/gpt-4o' or 'anthropic/claude-sonnet-4'"},
+                "model": {"type": "string", "description": "Optional model name, e.g. 'ollama/llava:latest', 'openrouter/google/gemini-2.5-flash', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4-5', or 'cohere/command-a-vision-07-2025'"},
             },
             "required": ["path"],
         },
@@ -269,6 +284,7 @@ def main():
     parser.add_argument("--http", type=int, nargs="?", const=3789, default=0,
                         help="Run as HTTP server on given port (default: 3789). Omit for stdio mode.")
     args = parser.parse_args()
+    _start_background_refresh()
 
     if args.http:
         _SAFE_STDERR.write(f"Starting HTTP MCP server on port {args.http}...\n")

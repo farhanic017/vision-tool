@@ -16,7 +16,7 @@ What it does:
   4. Configures vision-tool as ALWAYS-ON (permanent system instruction,
      not just a triggered skill — the model will never say "I can't view images")
   5. Offers to install invisible watchdog (Windows only)
-  6. Prompts to configure API keys (enter now or add later)
+  6. Detects local vision models first, then asks for API keys only if needed
 """
 
 import argparse
@@ -131,7 +131,7 @@ def step_deps(target_dir):
 
 
 def step_setup(target_dir):
-    """Prompt for API keys inline (no subprocess, no new terminal)."""
+    """Configure a local vision model or API keys inline."""
     import importlib.util
     setup_path = os.path.join(target_dir, "setup.py")
     if os.path.isfile(setup_path):
@@ -144,7 +144,15 @@ def step_setup(target_dir):
         sys.path.insert(0, target_dir)
         spec.loader.exec_module(mod)
         sys.path.pop(0)
-        mod.enter_keys()
+        native_ok = False
+        if hasattr(mod, "auto_setup_vision_backend"):
+            native_ok = bool(mod.auto_setup_vision_backend())
+        elif hasattr(mod, "auto_setup_native_vision"):
+            native_ok = bool(mod.auto_setup_native_vision())
+        if native_ok and hasattr(mod, "run_capability_profile"):
+            mod.run_capability_profile(reason="install_auto_detect")
+        if not native_ok:
+            mod.enter_keys()
         # Verify save worked (check both paths)
         config_path = os.path.join(target_dir, "config.json")
         appdata_cfg = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "vision-tool", "config.json")
@@ -154,15 +162,29 @@ def step_setup(target_dir):
                 try:
                     with open(p) as f:
                         cfg = json.load(f)
-                    if any(cfg.get(k, "") for k in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY")):
+                    if cfg.get("DEFAULT_MODEL", "").startswith((
+                        "ollama/", "lmstudio/", "openai-local/", "openrouter/",
+                        "gemini/", "mistral/", "groq/", "hf/", "huggingface/",
+                        "fireworks/", "zai/", "azureai/", "openai/", "anthropic/",
+                        "claude/", "together/", "deepinfra/", "cohere/", "xai/", "grok/",
+                    )):
+                        found = True
+                        break
+                    if any(cfg.get(k, "") for k in (
+                        "GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY",
+                        "AZUREAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                        "MISTRAL_API_KEY", "GROQ_API_KEY", "HF_TOKEN",
+                        "FIREWORKS_API_KEY", "ZAI_API_KEY", "TOGETHER_API_KEY",
+                        "DEEPINFRA_API_KEY", "COHERE_API_KEY", "XAI_API_KEY",
+                    )):
                         found = True
                         break
                 except (json.JSONDecodeError, IOError):
                     pass
         if found:
-            print(f"  {green('✔')} API keys saved and verified")
+            print(f"  {green('✔')} Vision configuration saved and verified")
         else:
-            print(f"  {yellow('⚠')} Config file not found or no keys detected after setup")
+            print(f"  {yellow('⚠')} Config file not found or no vision backend detected after setup")
 
 
 def detect_client():
@@ -479,8 +501,8 @@ def main():
     step_watchdog(target_dir, auto=args.auto)
     print()
 
-    # ── 5. API keys ─────────────────────────────────────────────
-    print(bold("  Step 5: Configure API keys"))
+    # ── 5. Vision backend ───────────────────────────────────────
+    print(bold("  Step 5: Configure vision backend"))
     if args.auto:
         local_cfg = os.path.join(target_dir, "config.json")
         appdata_cfg = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "vision-tool", "config.json")
@@ -524,3 +546,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

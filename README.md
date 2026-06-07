@@ -8,6 +8,12 @@ vision-tool lets any AI model — including local models, free APIs, or
 models without built-in vision (like `big-pickle`, `DeepSeek`) — describe
 images and videos by routing them through **23 external vision backends**.
 
+## Demo Video
+
+<video controls src="docs/demo/vision_tool_how_it_works.mp4" title="vision-tool demo"></video>
+
+[Open or download the demo video](docs/demo/vision_tool_how_it_works.mp4)
+
 ## Features
 
 - **Images** — PNG, JPG, WebP, BMP, animated GIF
@@ -555,9 +561,27 @@ vision-tool/
 - **No data storage.** Images/videos are never saved or logged; keyframes are
   written to a temp directory and immediately cleaned up.
 
-## Version History
+## Version
 
-### v6 (Current) — Fireworks & Fuzz Hardening
+### v8 (Current) - Capability memory, auto-detection, and provider expansion
+- Added persistent backend memory for quota, token, rate-limit, and health states.
+- Limited models are skipped on later runs, then retried after the 24-hour cooldown.
+- Added first-install capability profiling to detect whether working access is local, free/included, paid/metered, quota-limited, or payment/plan-limited.
+- Added background capability refresh every 2 days at startup, so new provider/model access is discovered without blocking the agent.
+- Added auto-detection for local VLMs, cloud credentials, MCP environment blocks, and CLI/provider setups before asking for API keys.
+- Expanded provider routing and detection across local runtimes, OpenRouter, Gemini, OpenAI, Anthropic, Together, DeepInfra, Cohere, xAI, Mistral, Groq, HuggingFace, Fireworks, ZAI, Cloudflare, Azure AI, Ollama, and LM Studio.
+- Added `--refresh-profile` for manual capability refresh and JSON profile output.
+- Hardened setup/install so non-interactive installs do not hang on prompts.
+- Verified with syntax checks, focused capability tests, aggressive tests, and fuzz/stress tests.
+
+### v7 - Local/cloud vision auto-setup
+- Installer checks for already-working vision models before asking for API keys.
+- Local runtimes such as Ollama and LM Studio are probed with a tiny image test.
+- Existing CLI, MCP, and provider credentials can be reused when they pass a real vision request.
+- OpenRouter can be scanned for vision-capable models even when the active CLI model is text-only.
+- Manual provider additions remain simple config/env updates.
+
+### v6 — Fireworks & Fuzz Hardening
 - Added **Fireworks AI** backend (Llama 3.2 90B Vision) — 22 total backends
 - Fixed 4 pre-existing **fuzz test failures** (312/312 passing):
   - MCP int path crash — `_resolve_path()` type guard
