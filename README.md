@@ -16,9 +16,9 @@ images and videos by routing them through **23 external vision backends**.
 
 ## Demo Video
 
-<video controls src="docs/demo/vision_tool_how_it_works.mp4" title="vision-tool demo"></video>
+![vision-tool animated demo](docs/demo/vision_tool_how_it_works.gif)
 
-[Open or download the demo video](docs/demo/vision_tool_how_it_works.mp4)
+The preview above is embedded directly in the README from `docs/demo/vision_tool_how_it_works.gif`.
 
 ## Features
 
