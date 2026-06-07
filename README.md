@@ -1,5 +1,11 @@
 # vision-tool
 
+![license GPLv3](https://img.shields.io/badge/license-GPLv3-8A2BE2)
+![platform Python 3.8+](https://img.shields.io/badge/platform-Python%203.8%2B-22C55E)
+![author Farhan Dhrubo](https://img.shields.io/badge/author-Farhan%20Dhrubo-F97316)
+![version v8](https://img.shields.io/badge/version-v8-2563EB)
+![tests 591 passed](https://img.shields.io/badge/tests-591%20passed-16A34A)
+
 > Created by [Farhan Dhrubo](https://github.com/farhanic017) — [Submit an issue](https://github.com/farhanic017/vision-tool/issues)
 
 **Image & video analysis for AI coding assistants — always-on, always available.**
