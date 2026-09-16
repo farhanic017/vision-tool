@@ -210,6 +210,7 @@ ALL_PROVIDER_KEYS = [
     "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
     "FIREWORKS_API_KEY", "ZAI_API_KEY", "TOGETHER_API_KEY",
     "DEEPINFRA_API_KEY", "COHERE_API_KEY", "XAI_API_KEY",
+    "OPENAI_COMPAT_API_KEY", "OPENAI_COMPAT_BASE_URL",
 ]
 NATIVE_MODEL_PREFIXES = ("ollama/", "lmstudio/", "openai-local/")
 
@@ -276,6 +277,8 @@ def load_config(require_keys=True):
         "DEEPINFRA_API_KEY": os.environ.get("DEEPINFRA_API_KEY"),
         "COHERE_API_KEY": os.environ.get("COHERE_API_KEY"),
         "XAI_API_KEY": os.environ.get("XAI_API_KEY"),
+        "OPENAI_COMPAT_API_KEY": os.environ.get("OPENAI_COMPAT_API_KEY"),
+        "OPENAI_COMPAT_BASE_URL": os.environ.get("OPENAI_COMPAT_BASE_URL"),
         "DEFAULT_MODEL": os.environ.get("VISION_MODEL"),
     }
     cfg_path = _find_config()
@@ -314,6 +317,8 @@ def load_config(require_keys=True):
             "    $env:XAI_API_KEY='...'                (console.x.ai)\n"
             "    $env:FIREWORKS_API_KEY='fw_...'       (fireworks.ai/api-keys)\n"
             "    $env:ZAI_API_KEY='...'                (z.ai, Zhipu AI)\n"
+            "    $env:OPENAI_COMPAT_BASE_URL='http://127.0.0.1:8000/v1'  (generic OpenAI-compatible URL)\n"
+            "    $env:OPENAI_COMPAT_API_KEY='...'      (optional for generic OpenAI-compatible URL)\n"
             "    $env:VISION_MODEL='model-name'    (optional default model)"
         )
     return keys
@@ -557,6 +562,7 @@ def _strategy_access_kind(name):
 def _provider_label_from_strategy(name):
     text = (name or "").lower()
     providers = (
+        ("openai-compatible", "OpenAI-Compatible"),
         ("openrouter", "OpenRouter"),
         ("gemini", "Gemini"),
         ("openai", "OpenAI"),
@@ -741,6 +747,8 @@ def _has_key(name):
         return True
     if "Ollama" in name or "ollama" in name or "LM Studio" in name or "lmstudio" in name:
         return True
+    if "OpenAI-Compatible" in name or "openai-compatible" in name or "openai_compat" in name:
+        return bool(CFG.get("OPENAI_COMPAT_BASE_URL"))
     if "OpenAI" in name or "openai" in name:
         return bool(CFG.get("OPENAI_API_KEY"))
     if "Anthropic" in name or "Claude" in name or "anthropic" in name:
@@ -965,6 +973,19 @@ DEEPINFRA_ENDPOINT = _api_http_base(os.environ.get("DEEPINFRA_BASE_URL"), "https
 XAI_ENDPOINT = _api_http_base(os.environ.get("XAI_BASE_URL"), "https://api.x.ai/v1")
 ANTHROPIC_ENDPOINT = _api_http_base(os.environ.get("ANTHROPIC_BASE_URL"), "https://api.anthropic.com/v1")
 COHERE_ENDPOINT = _api_http_base(os.environ.get("COHERE_BASE_URL"), "https://api.cohere.com/v2")
+GROQ_ENDPOINT_BASE = _api_http_base(os.environ.get("GROQ_BASE_URL"), "https://api.groq.com/openai/v1")
+HF_ENDPOINT_BASE = _api_http_base(os.environ.get("HF_BASE_URL"), "https://router.huggingface.co/v1")
+MISTRAL_ENDPOINT_BASE = _api_http_base(os.environ.get("MISTRAL_BASE_URL"), "https://api.mistral.ai/v1")
+FIREWORKS_ENDPOINT_BASE = _api_http_base(os.environ.get("FIREWORKS_BASE_URL"), "https://api.fireworks.ai/inference/v1")
+ZAI_ENDPOINT_BASE = _api_http_base(os.environ.get("ZAI_BASE_URL"), "https://api.z.ai/api/paas/v4")
+GEMINI_BASE = _api_http_base(os.environ.get("GEMINI_BASE_URL"), "https://generativelanguage.googleapis.com/v1beta/models")
+_OPENAI_COMPAT_BASE_RAW = (os.environ.get("OPENAI_COMPAT_BASE_URL") or "").strip().rstrip("/")
+OPENAI_COMPAT_ENDPOINT = _OPENAI_COMPAT_BASE_RAW if (not _OPENAI_COMPAT_BASE_RAW or "://" in _OPENAI_COMPAT_BASE_RAW) else "http://" + _OPENAI_COMPAT_BASE_RAW
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "c782ccfebd6eb876a9ef860d61588da7")
+CLOUDFLARE_ENDPOINT_BASE = _api_http_base(
+    os.environ.get("CLOUDFLARE_BASE_URL"),
+    f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+)
 
 
 def call_ollama(b64data, mime, prompt, model):
@@ -1094,7 +1115,15 @@ def _extract_chat_completion(data):
     return str(content or "").strip()
 
 
-def _call_openai_compatible(endpoint, key_name, b64data, mime, prompt, model, timeout=60):
+def _endpoint_join(base, path):
+    base_clean = (base or "").strip().rstrip("/")
+    path_clean = "/" + (path or "").lstrip("/")
+    if base_clean.lower().endswith(path_clean.lower()):
+        return base_clean
+    return f"{base_clean}{path_clean}"
+
+
+def _call_openai_compatible(endpoint, key_name, b64data, mime, prompt, model, timeout=60, extra_headers=None, require_key=True):
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": [
@@ -1103,25 +1132,45 @@ def _call_openai_compatible(endpoint, key_name, b64data, mime, prompt, model, ti
         ]}],
         "max_tokens": 2048,
     }
+    headers = {"Content-Type": "application/json"}
+    key_value = ""
+    if key_name:
+        key_value = (CFG.get(key_name) if isinstance(CFG, dict) else "") or os.environ.get(key_name, "")
+    if key_value:
+        headers["Authorization"] = f"******"
+    elif require_key:
+        raise RuntimeError(f"Missing required API key: {key_name}")
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(
-        f"{endpoint}/chat/completions",
+        _endpoint_join(endpoint, "/chat/completions"),
         data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {CFG[key_name]}", "Content-Type": "application/json"},
+        headers=headers,
     )
     resp = urllib.request.urlopen(req, timeout=timeout)
     return _extract_chat_completion(json.loads(resp.read()))
 
 
-def _call_openai_compatible_multi(endpoint, key_name, frames, prompt, model, timeout=90):
+def _call_openai_compatible_multi(endpoint, key_name, frames, prompt, model, timeout=90, extra_headers=None, require_key=True):
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": build_multimodal_content(frames, prompt)}],
         "max_tokens": 2048,
     }
+    headers = {"Content-Type": "application/json"}
+    key_value = ""
+    if key_name:
+        key_value = (CFG.get(key_name) if isinstance(CFG, dict) else "") or os.environ.get(key_name, "")
+    if key_value:
+        headers["Authorization"] = f"******"
+    elif require_key:
+        raise RuntimeError(f"Missing required API key: {key_name}")
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(
-        f"{endpoint}/chat/completions",
+        _endpoint_join(endpoint, "/chat/completions"),
         data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {CFG[key_name]}", "Content-Type": "application/json"},
+        headers=headers,
     )
     resp = urllib.request.urlopen(req, timeout=timeout)
     return _extract_chat_completion(json.loads(resp.read()))
@@ -1159,6 +1208,44 @@ def call_xai_multi(frames, prompt, model="grok-4.3"):
     return _call_openai_compatible_multi(XAI_ENDPOINT, "XAI_API_KEY", frames, prompt, model)
 
 
+def _openai_compat_endpoint():
+    base = ((CFG or {}).get("OPENAI_COMPAT_BASE_URL") if isinstance(CFG, dict) else "") or OPENAI_COMPAT_ENDPOINT
+    base = (base or "").strip().rstrip("/")
+    if base and "://" not in base:
+        base = "http://" + base
+    return base
+
+
+def _openai_compat_headers():
+    headers = {"Content-Type": "application/json"}
+    key = ((CFG or {}).get("OPENAI_COMPAT_API_KEY") if isinstance(CFG, dict) else "") or os.environ.get("OPENAI_COMPAT_API_KEY", "")
+    if key:
+        header_name = os.environ.get("OPENAI_COMPAT_AUTH_HEADER", "Authorization").strip() or "Authorization"
+        scheme = os.environ.get("OPENAI_COMPAT_AUTH_SCHEME", "Bearer").strip()
+        headers[header_name] = f"{scheme} {key}".strip() if scheme else key
+    return headers
+
+
+def call_openai_compat(b64data, mime, prompt, model):
+    endpoint = _openai_compat_endpoint()
+    if not endpoint:
+        raise RuntimeError("OPENAI_COMPAT_BASE_URL is required for openai-compatible URL routing")
+    return _call_openai_compatible(
+        endpoint, None, b64data, mime, prompt, model,
+        extra_headers=_openai_compat_headers(), require_key=False,
+    )
+
+
+def call_openai_compat_multi(frames, prompt, model):
+    endpoint = _openai_compat_endpoint()
+    if not endpoint:
+        raise RuntimeError("OPENAI_COMPAT_BASE_URL is required for openai-compatible URL routing")
+    return _call_openai_compatible_multi(
+        endpoint, None, frames, prompt, model,
+        extra_headers=_openai_compat_headers(), require_key=False,
+    )
+
+
 def _extract_anthropic_text(data):
     parts = []
     for item in data.get("content", []) if isinstance(data, dict) else []:
@@ -1177,7 +1264,7 @@ def call_anthropic(b64data, mime, prompt, model="claude-sonnet-4-5"):
         ]}],
     }
     req = urllib.request.Request(
-        f"{ANTHROPIC_ENDPOINT}/messages",
+        _endpoint_join(ANTHROPIC_ENDPOINT, "/messages"),
         data=json.dumps(payload).encode(),
         headers={
             "x-api-key": CFG["ANTHROPIC_API_KEY"],
@@ -1198,7 +1285,7 @@ def call_anthropic_multi(frames, prompt, model="claude-sonnet-4-5"):
         })
     payload = {"model": model, "max_tokens": 2048, "messages": [{"role": "user", "content": content}]}
     req = urllib.request.Request(
-        f"{ANTHROPIC_ENDPOINT}/messages",
+        _endpoint_join(ANTHROPIC_ENDPOINT, "/messages"),
         data=json.dumps(payload).encode(),
         headers={
             "x-api-key": CFG["ANTHROPIC_API_KEY"],
@@ -1257,8 +1344,7 @@ def call_cohere_multi(frames, prompt, model="command-a-vision-07-2025"):
     return _extract_cohere_text(json.loads(resp.read()))
 
 
-CLOUDFLARE_ACCOUNT_ID = "c782ccfebd6eb876a9ef860d61588da7"
-CLOUDFLARE_ENDPOINT = f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1/chat/completions"
+CLOUDFLARE_ENDPOINT = _endpoint_join(CLOUDFLARE_ENDPOINT_BASE, "/chat/completions")
 
 
 def _cloudflare_headers():
@@ -1396,7 +1482,7 @@ def call_azureai_multi(frames, prompt, model):
 
 
 # ── Groq caller (OpenAI-compatible) ──────────────────────────────────
-GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_ENDPOINT = _endpoint_join(GROQ_ENDPOINT_BASE, "/chat/completions")
 
 
 def _groq_headers():
@@ -1439,7 +1525,7 @@ def call_groq_multi(frames, prompt, model="meta-llama/llama-4-scout-17b-16e-inst
 
 
 # ── Hugging Face Inference Providers caller ───────────────────────────
-HF_ROUTER_ENDPOINT = "https://router.huggingface.co/v1/chat/completions"
+HF_ROUTER_ENDPOINT = _endpoint_join(HF_ENDPOINT_BASE, "/chat/completions")
 
 
 def _hf_headers():
@@ -1489,7 +1575,7 @@ def call_hf_multi(frames, prompt, model=None):
 
 
 # ── Mistral AI caller (OpenAI-compatible) ───────────────────────────
-MISTRAL_ENDPOINT = "https://api.mistral.ai/v1/chat/completions"
+MISTRAL_ENDPOINT = _endpoint_join(MISTRAL_ENDPOINT_BASE, "/chat/completions")
 
 
 def _mistral_headers():
@@ -1531,7 +1617,7 @@ def call_mistral_multi(frames, prompt, model="pixtral-large-latest"):
 
 
 # ── Fireworks AI caller (OpenAI-compatible) ─────────────────────────
-FIREWORKS_ENDPOINT = "https://api.fireworks.ai/inference/v1/chat/completions"
+FIREWORKS_ENDPOINT = _endpoint_join(FIREWORKS_ENDPOINT_BASE, "/chat/completions")
 
 
 def _fireworks_headers():
@@ -1575,9 +1661,6 @@ def call_fireworks_multi(frames, prompt, model="accounts/fireworks/models/llama-
 
 
 # ── Google Gemini caller ────────────────────────────────────────────
-GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-
-
 def _gemini_url(model, action="generateContent"):
     return f"{GEMINI_BASE}/{model}:{action}?key={CFG['GEMINI_API_KEY']}"
 
@@ -1622,7 +1705,7 @@ def call_gemini_multi(frames, prompt, model="gemini-2.5-flash"):
 
 
 # ── ZAI (Zhipu AI) caller (OpenAI-compatible) ──────────────────────
-ZAI_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions"
+ZAI_ENDPOINT = _endpoint_join(ZAI_ENDPOINT_BASE, "/chat/completions")
 
 
 def _zai_headers():
@@ -1680,6 +1763,8 @@ def get_providers_for_model(model):
             return _filter_providers([("openrouter", stripped)])
         if prefix in ("openai",):
             return _filter_providers([("openai", stripped)])
+        if prefix in ("openai-compatible", "openai_compat", "openai-compat", "oaic", "compat", "url"):
+            return _filter_providers([("openai_compat", stripped)])
         if prefix in ("anthropic", "claude"):
             return _filter_providers([("anthropic", stripped)])
         if prefix in ("together", "togetherai"):
@@ -1722,6 +1807,7 @@ def _filter_providers(candidates):
         "lmstudio": None,
         "openrouter": "OPENROUTER_API_KEY",
         "openai": "OPENAI_API_KEY",
+        "openai_compat": "OPENAI_COMPAT_BASE_URL",
         "anthropic": "ANTHROPIC_API_KEY",
         "together": "TOGETHER_API_KEY",
         "deepinfra": "DEEPINFRA_API_KEY",
@@ -1861,6 +1947,7 @@ def _insert_model_strategies(strategies, model, kind, *args, prompt=""):
         "lmstudio": (call_lmstudio, call_lmstudio_multi),
         "openrouter": (call_openrouter, call_openrouter_multi),
         "openai": (call_openai, call_openai_multi),
+        "openai_compat": (call_openai_compat, call_openai_compat_multi),
         "anthropic": (call_anthropic, call_anthropic_multi),
         "together": (call_together, call_together_multi),
         "deepinfra": (call_deepinfra, call_deepinfra_multi),
@@ -1880,16 +1967,17 @@ def _insert_model_strategies(strategies, model, kind, *args, prompt=""):
         pair = dispatch.get(prov)
         if not pair:
             continue
+        provider_label = "OpenAI-Compatible" if prov == "openai_compat" else prov.title()
         fn_img, fn_vid = pair
         fn = fn_vid if is_vid else fn_img
         if is_vid:
             strategies.insert(0, (
-                f"\u2605 {prov.title()}: {model}",
+                f"\u2605 {provider_label}: {model}",
                 lambda m=native_model, f=fn: f(args[0], prompt, m),
             ))
         else:
             strategies.insert(0, (
-                f"\u2605 {prov.title()}: {model}",
+                f"\u2605 {provider_label}: {model}",
                 lambda m=native_model, f=fn: f(args[0], args[1], prompt, m),
             ))
 
