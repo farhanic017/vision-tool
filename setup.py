@@ -122,7 +122,9 @@ def securesave(config):
                          "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY",
                          "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY",
                          "TOGETHER_API_KEY", "DEEPINFRA_API_KEY",
-                         "COHERE_API_KEY", "XAI_API_KEY", "DEFAULT_MODEL"]
+                         "COHERE_API_KEY", "XAI_API_KEY",
+                         "OPENAI_COMPAT_API_KEY", "OPENAI_COMPAT_BASE_URL",
+                         "DEFAULT_MODEL"]
     for k in PROVIDER_ENV_KEYS:
         env_val = os.environ.get(k, "")
         if env_val and not config.get(k):
@@ -251,6 +253,7 @@ PROVIDER_CONFIG_KEYS = [
     "ANTHROPIC_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY",
     "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY",
     "TOGETHER_API_KEY", "DEEPINFRA_API_KEY", "COHERE_API_KEY", "XAI_API_KEY",
+    "OPENAI_COMPAT_API_KEY", "OPENAI_COMPAT_BASE_URL",
 ]
 PROVIDER_KEY_ALIASES = {
     "GEMINI_API_KEY": ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"),
@@ -269,6 +272,8 @@ PROVIDER_KEY_ALIASES = {
     "DEEPINFRA_API_KEY": ("DEEPINFRA_API_KEY",),
     "COHERE_API_KEY": ("COHERE_API_KEY",),
     "XAI_API_KEY": ("XAI_API_KEY", "GROK_API_KEY"),
+    "OPENAI_COMPAT_API_KEY": ("OPENAI_COMPAT_API_KEY",),
+    "OPENAI_COMPAT_BASE_URL": ("OPENAI_COMPAT_BASE_URL",),
 }
 OPENROUTER_FALLBACK_VISION_MODELS = (
     "google/gemini-2.5-flash",
@@ -989,6 +994,8 @@ PROVIDER_LABELS = [
     ("DEEPINFRA_API_KEY", "DeepInfra"),
     ("COHERE_API_KEY", "Cohere"),
     ("XAI_API_KEY", "xAI"),
+    ("OPENAI_COMPAT_API_KEY", "OpenAI-compatible"),
+    ("OPENAI_COMPAT_BASE_URL", "OpenAI-compatible base URL"),
     ("MISTRAL_API_KEY", "Mistral AI"),
     ("GROQ_API_KEY", "Groq"),
     ("HF_TOKEN", "HuggingFace"),
@@ -1016,7 +1023,8 @@ def show_keys():
             pass
     for key, label in PROVIDER_LABELS:
         val = existing.get(key, "")
-        _safe_print(f"  {label + ' API key':22s} {green('set') if val else yellow('not set')}")
+        suffix = "" if ("endpoint" in label.lower() or "url" in label.lower()) else " API key"
+        _safe_print(f"  {label + suffix:22s} {green('set') if val else yellow('not set')}")
     mdl = existing.get("DEFAULT_MODEL", "")
     _safe_print(f"  {'Default model':22s} {cyan(mdl) if mdl else dim('(auto-fallback chain)')}")
 
@@ -1092,6 +1100,16 @@ def enter_keys():
         default=existing.get("XAI_API_KEY", ""),
         secret=True, optional=True,
     )
+    openai_compat_key = prompt(
+        "OpenAI-compatible API key (optional)",
+        default=existing.get("OPENAI_COMPAT_API_KEY", ""),
+        secret=True, optional=True,
+    )
+    openai_compat_base = prompt(
+        "OpenAI-compatible base URL (e.g. http://127.0.0.1:8000/v1)",
+        default=existing.get("OPENAI_COMPAT_BASE_URL", ""),
+        secret=False, optional=True,
+    )
     mistral_key = prompt(
         "Mistral AI API key",
         default=existing.get("MISTRAL_API_KEY", ""),
@@ -1158,6 +1176,8 @@ def enter_keys():
         "DEEPINFRA_API_KEY": deepinfra_key,
         "COHERE_API_KEY": cohere_key,
         "XAI_API_KEY": xai_key,
+        "OPENAI_COMPAT_API_KEY": openai_compat_key,
+        "OPENAI_COMPAT_BASE_URL": openai_compat_base,
         "MISTRAL_API_KEY": mistral_key,
         "GROQ_API_KEY": groq_key,
         "HF_TOKEN": hf_token,
@@ -1262,6 +1282,7 @@ def setup_later():
     print("    HuggingFace:  https://huggingface.co/settings/tokens")
     print("    Fireworks AI: https://fireworks.ai/api-keys")
     print("    Zhipu AI:     https://z.ai (Z.AI API)")
+    print("    OpenAI-compatible: any OpenAI-style endpoint URL (self-hosted/local gateway)")
     print()
 
 

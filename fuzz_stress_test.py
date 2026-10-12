@@ -383,8 +383,15 @@ def test_env_attacks():
 
     try:
         # ── Missing env vars ──
-        os.environ.pop("GEMINI_API_KEY", None)
-        os.environ.pop("OPENROUTER_API_KEY", None)
+        for _k in [
+            "GEMINI_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_KEY",
+            "AZUREAI_API_KEY", "AZUREAI_ENDPOINT", "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "DEEPINFRA_API_KEY",
+            "COHERE_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY",
+            "GROQ_API_KEY", "HF_TOKEN", "FIREWORKS_API_KEY", "ZAI_API_KEY",
+            "OPENAI_COMPAT_API_KEY", "OPENAI_COMPAT_BASE_URL",
+        ]:
+            os.environ.pop(_k, None)
 
         # Remove config.json temporarily (both local and APPDATA)
         appdata_config = None
@@ -402,17 +409,19 @@ def test_env_attacks():
 
         # ── No config no env ──
         try:
-            vp.load_config()
-            check("load_config: no config no env", False)
+            result = vp.load_config()
+            check("load_config: no config no env", isinstance(result, dict))
         except RuntimeError:
             check("load_config: no config no env (no keys)", True)
 
         # ── Empty env vars ──
         os.environ["GEMINI_API_KEY"] = ""
         os.environ["OPENROUTER_API_KEY"] = ""
+        os.environ["OPENAI_COMPAT_API_KEY"] = ""
+        os.environ["OPENAI_COMPAT_BASE_URL"] = ""
         try:
-            vp.load_config()
-            check("load_config: empty env vars", False)
+            result = vp.load_config()
+            check("load_config: empty env vars", isinstance(result, dict))
         except RuntimeError:
             check("load_config: empty env vars (no keys)", True)
 

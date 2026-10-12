@@ -217,9 +217,16 @@ You need at least **one** of these:
 | **Zhipu AI (Z.AI) key** | https://z.ai | ZAI Glm-4.5-Flash (free tier) |
 | **Cloudflare API key** | https://dash.cloudflare.com/profile/api-tokens | Cloudflare Workers AI (free tier, for --model flag) |
 | **OpenRouter API key** | https://openrouter.ai/keys | Multi-model access (free + paid) |
+| **OpenAI-compatible URL** | your local/self-hosted gateway URL | Generic routing with `openai-compatible/<model>` |
 
 Run `python setup.py` — choose to enter keys now or add later.
 Add keys later anytime with: `python setup.py --add-key`
+
+Optional env vars for generic URL providers:
+- `OPENAI_COMPAT_BASE_URL` (required for `openai-compatible/<model>`)
+- `OPENAI_COMPAT_API_KEY` (optional)
+- `OPENAI_COMPAT_AUTH_HEADER` (optional, default: `Authorization`)
+- `OPENAI_COMPAT_AUTH_SCHEME` (optional, default: `Bearer`)
 
 ## Integration guides
 

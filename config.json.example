@@ -11,5 +11,11 @@
   "HF_TOKEN": "",
   "FIREWORKS_API_KEY": "",
   "ZAI_API_KEY": "",
+  "TOGETHER_API_KEY": "",
+  "DEEPINFRA_API_KEY": "",
+  "COHERE_API_KEY": "",
+  "XAI_API_KEY": "",
+  "OPENAI_COMPAT_API_KEY": "",
+  "OPENAI_COMPAT_BASE_URL": "",
   "DEFAULT_MODEL": ""
 }

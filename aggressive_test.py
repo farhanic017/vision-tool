@@ -125,7 +125,7 @@ json.dump({'GEMINI_API_KEY': '', 'OPENROUTER_API_KEY': ''}, open('config.json', 
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'gk\nork\n\n\n\nok\nak\n\n', timeout=60)
+    out, err = p.communicate(input=b'gk\nork\n\n\n\nok\nak\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n', timeout=60)
     out_s = out.decode('utf-8', errors='replace')
     check('add-key: shows header', 'Add API Key' in out_s)
     check('add-key: exit 0', p.returncode == 0)
@@ -304,7 +304,7 @@ json.dump({'GEMINI_API_KEY': 'old_g', 'OPENROUTER_API_KEY': 'old_o', 'DEFAULT_MO
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'\n\n\n\n\n', timeout=60)
+    out, err = p.communicate(input=b'\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n', timeout=60)
     check('enter_keys: uses defaults', p.returncode == 0)
     cfg = json.load(open('config.json'))
     check('enter_keys: preserved Gemini', cfg.get('GEMINI_API_KEY') == 'old_g')
@@ -322,6 +322,8 @@ check('setup_later: empty Gemini', cfg.get('GEMINI_API_KEY') == '')
 check('setup_later: empty OpenRouter', cfg.get('OPENROUTER_API_KEY') == '')
 check('setup_later: empty OpenAI', cfg.get('OPENAI_API_KEY') == '')
 check('setup_later: empty Anthropic', cfg.get('ANTHROPIC_API_KEY') == '')
+check('setup_later: empty OpenAI compat key', cfg.get('OPENAI_COMPAT_API_KEY') == '')
+check('setup_later: empty OpenAI compat base', cfg.get('OPENAI_COMPAT_BASE_URL') == '')
 
 # 21. setup_later with existing keys (should not overwrite)
 json.dump({'GEMINI_API_KEY': 'gk', 'OPENROUTER_API_KEY': 'ork'}, open('config.json', 'w'))
@@ -336,7 +338,7 @@ for p_cfg in ('config.json', os.path.join(os.environ.get('APPDATA', os.path.expa
 p = subprocess.Popen([sys.executable, 'setup.py', '--add-key'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'gk\nork\n\n\n\nok\nak\n\n', timeout=60)
+    out, err = p.communicate(input=b'gk\nork\n\n\n\nok\nak\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n', timeout=60)
     check('enter_keys: fresh saves Gemini', p.returncode == 0)
     cfg = json.load(open('config.json'))
     check('enter_keys: fresh Gemini', cfg.get('GEMINI_API_KEY') == 'gk')
@@ -357,7 +359,7 @@ check('dim: works piped', isinstance(s.dim('hello'), str))
 p = subprocess.Popen([sys.executable, 'setup.py'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 time.sleep(1)
 try:
-    out, err = p.communicate(input=b'1\n\n\n\n\n\n', timeout=60)
+    out, err = p.communicate(input=b'1\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n', timeout=60)
     out_s = out.decode('utf-8', errors='replace')
     check('opt1: shows Gemini prompt', 'Gemini API key' in out_s)
     check('opt1: shows OpenRouter prompt', 'OpenRouter API key' in out_s)
@@ -738,6 +740,27 @@ try:
     check('load_config: DEFAULT_MODEL empty', k.get('DEFAULT_MODEL') == '')
 except Exception as e:
     check('load_config: DEFAULT_MODEL empty', False, str(e))
+
+# 56b. load_config — OpenAI-compatible URL config fields
+json.dump({
+    'OPENROUTER_API_KEY': 'ork',
+    'OPENAI_COMPAT_API_KEY': 'compat_key',
+    'OPENAI_COMPAT_BASE_URL': 'http://127.0.0.1:8000/v1'
+}, open('config.json', 'w'))
+try:
+    k = vp.load_config()
+    check('load_config: OPENAI_COMPAT_API_KEY', k.get('OPENAI_COMPAT_API_KEY') == 'compat_key')
+    check('load_config: OPENAI_COMPAT_BASE_URL', k.get('OPENAI_COMPAT_BASE_URL') == 'http://127.0.0.1:8000/v1')
+except Exception as e:
+    check('load_config: OPENAI_COMPAT fields', False, str(e))
+
+# 56c. routing — openai-compatible prefix and endpoint join
+vp.CFG = {"OPENAI_COMPAT_BASE_URL": "http://127.0.0.1:8000/v1"}
+providers = vp.get_providers_for_model('openai-compatible/gpt-4o-mini')
+check('routing: openai-compatible prefix', providers == [('openai_compat', 'gpt-4o-mini')])
+check('endpoint_join: avoids duplicate suffix',
+      vp._endpoint_join('http://127.0.0.1:8000/v1/chat/completions', '/chat/completions') ==
+      'http://127.0.0.1:8000/v1/chat/completions')
 
 # Restore real env vars (cleared during tests 48-53, now restored)
 for _EK, _EV in _SAVED_ENV.items():
